@@ -18,6 +18,7 @@ import {
   canManageRoles, canSee, currentRole, homePage, newMemberError, removeMemberError, restoreMeId, restoreMembers, roleChangeError, roleMeta, upsertMember,
 } from '@/lib/roles';
 import { mergeSnapshot } from './merge';
+import { startCalendarSync } from './calendarSync';
 import { parsePath } from './nav';
 
 export type ConfirmKind = '' | 'disconnect' | 'clear' | 'removeEv' | 'removeMember';
@@ -105,6 +106,8 @@ export interface StateFields extends Data {
 
 export interface Actions {
   patch: (p: Partial<StateFields>) => void;
+  /** Show a short message at the bottom of the screen. */
+  say: (msg: string) => void;
   /** Pull the latest snapshot from the provider and merge it with local workflow state. */
   hydrate: () => Promise<void>;
   go: (page: Page, p?: Partial<StateFields>) => void;
@@ -274,6 +277,7 @@ export const useStore = create<AppState>()((set, get) => {
     ...initialFields(),
 
     patch: (p) => set(p),
+    say: (msg) => showToast(msg),
     hydrate: async () => {
       if (provider.isDemo) return;
       set({ loading: true });
@@ -743,6 +747,7 @@ if (typeof window !== 'undefined') {
       saveJSON(dataKey(), { v: DATA_VERSION, emails: s.emails, apps: s.apps, events: s.events, accts: s.accts, notifs: s.notifs, activity: s.activity });
     }, 200);
   });
+  startCalendarSync(useStore);
   try {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     useStore.setState({ sysDark: mq.matches });

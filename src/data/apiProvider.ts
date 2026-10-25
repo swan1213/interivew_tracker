@@ -1,4 +1,4 @@
-import type { Account, DataSnapshot, Member, OutgoingMessage, Role } from './types';
+import type { Account, CalEvent, DataSnapshot, Member, OutgoingMessage, Role } from './types';
 import type { Clock, MailProvider, SyncResult } from './provider';
 
 export interface ApiHealth {
@@ -10,7 +10,7 @@ export interface ApiHealth {
   auth?: boolean;
 }
 
-async function call<T>(url: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET', json?: unknown): Promise<T> {
+async function call<T>(url: string, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'GET', json?: unknown): Promise<T> {
   const r = await fetch(url, {
     method,
     headers: json !== undefined ? { 'Content-Type': 'application/json' } : undefined,
@@ -89,5 +89,13 @@ export class ApiMailProvider implements MailProvider {
 
   async archive(id: string): Promise<void> {
     await call('/api/mail/' + enc(id) + '/archive', 'POST', {});
+  }
+
+  async pushEvent(ev: CalEvent): Promise<void> {
+    await call('/api/calendar/events/' + enc(ev.id), 'PUT', { event: ev });
+  }
+
+  async removeEvent(id: string): Promise<void> {
+    await call('/api/calendar/events/' + enc(id), 'DELETE');
   }
 }

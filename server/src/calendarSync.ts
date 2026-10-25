@@ -1,0 +1,155 @@
+/**
+ * Two-way Google Calendar sync.
+ * Push: an interview the user adds, moves or removes in the app is created,
+ * updated or deleted on the Google Calendar of the mailbox it came from.
+ * Pull: other events on connected calendars become busy blocks, so the slot
+ * picker and conflict checks see real commitments.
+ * Stored as calendar.json: which Google event mirrors which app event, and the
+ * busy blocks last pulled per account.
+ */
+import type { CalEvent } from '../../src/data/types';
+import { calendarFor, CalendarError, hasCalendar, type CalendarApi, type GEvent } from './google/calendar';
+import { readJson, writeJson } from './store';
+import { addDays } from './time';
+import type { StoredAccount } from './types';
+
+const FILE = 'calendar.json';
+/** App times are Eastern; Google converts for the viewer. */
+const ET = 'America/New_York';
+/** Window pulled on each sync. */
+const PAST_DAYS = 1;
+const AHEAD_DAYS = 60;
+
+export interface CalendarStore {
+  links: Record<string, { accountId: string; gid: string }>;
+  busy: Record<string, CalEvent[]>;
+}
+
+export const readCalendar = async (): Promise<CalendarStore> => {
+  const c = await readJson<Partial<CalendarStore>>(FILE, {});
+  return { links: c.links || {}, busy: c.busy || {} };
+};
+const writeCalendar = (c: CalendarStore): Promise<void> => writeJson(FILE, c);
+
+/** All pulled busy blocks, for the snapshot. */
+export const busyEvents = (c: CalendarStore, accounts: StoredAccount[]): CalEvent[] => accounts.flatMap((a) => c.busy[a.id] || []);
+
+/** Forget an account's links and busy blocks when it is disconnected. */
+export async function dropCalendarAccount(accountId: string): Promise<void> {
+  const c = await readCalendar();
+  delete c.busy[accountId];
+  for (const [id, l] of Object.entries(c.links)) if (l.accountId === accountId) delete c.links[id];
+  await writeCalendar(c);
+}
+
+const pad = (n: number): string => String(n).padStart(2, '0');
+
+/** "2026-10-27" + 14.5 → "2026-10-27T14:30:00"; hours past midnight roll into the next day. */
+export function etDateTime(date: string, hour: number): string {
+  const day = Math.floor(hour / 24);
+  const mins = Math.round((hour - day * 24) * 60);
+  return (day ? addDays(date, day) : date) + 'T' + pad(Math.floor(mins / 60)) + ':' + pad(mins % 60) + ':00';
+}
+
+/** Eastern date and decimal hour of an RFC 3339 timestamp. */
+export function etParts(iso: string): { date: string; hour: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: ET, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(iso));
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+  return { date: p.year + '-' + p.month + '-' + p.day, hour: Number(p.hour) + Number(p.minute) / 60 };
+}
+
+export function toGoogleEvent(ev: CalEvent): GEvent {
+  const has = (s?: string) => !!s && s !== 'Not stated';
+  const details = [
+    has(ev.interviewer) ? 'Interviewer: ' + ev.interviewer : '',
+    has(ev.platform) ? 'Platform: ' + ev.platform : '',
+    ev.link ? 'Link: ' + ev.link : '',
+    ev.pendingNote || '',
+  ].filter(Boolean);
+  return {
+    summary: ev.co + ' · ' + ev.role,
+    description: [...details, ...(details.length ? [''] : []), 'Added by InterviewFlow AI'].join('\n'),
+    ...(ev.link ? { location: ev.link } : {}),
+    start: { dateTime: etDateTime(ev.date, ev.start), timeZone: ET },
+    end: { dateTime: etDateTime(ev.date, ev.end), timeZone: ET },
+    reminders: { useDefault: false, overrides: (ev.rem || []).slice(0, 5).map((minutes) => ({ method: 'popup', minutes })) },
+    extendedProperties: { private: { iflowId: ev.id } },
+  };
+}
+
+/** A Google event as a busy block, or null for events that don't block time. */
+export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
+  if (!g.id || g.status === 'cancelled' || g.transparency === 'transparent') return null;
+  // Our own interviews are already in the app; all-day events don't block a time slot.
+  if (g.extendedProperties?.private?.iflowId || !g.start?.dateTime || !g.end?.dateTime) return null;
+  if (g.attendees?.some((x) => x.self && x.responseStatus === 'declined')) return null;
+  const s = etParts(g.start.dateTime);
+  const e = etParts(g.end.dateTime);
+  const end = e.date === s.date ? e.hour : 24;
+  if (end <= s.hour) return null;
+  return { id: 'gcal-' + acct.id + '-' + g.id, kind: 'busy', co: g.summary || 'Busy', role: 'Google Calendar', stage: 'busy', date: s.date, start: s.hour, end, added: true };
+}
+
+/** Pull the account's calendar into busy blocks. */
+export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calendarFor(acct), now: Date = new Date()): Promise<{ busy: number }> {
+  const day = 86_400_000;
+  const items = await api.listEvents(new Date(now.getTime() - PAST_DAYS * day).toISOString(), new Date(now.getTime() + AHEAD_DAYS * day).toISOString());
+  const busy = items.map((g) => toBusy(acct, g)).filter((v): v is CalEvent => !!v);
+  const c = await readCalendar();
+  c.busy[acct.id] = busy;
+  await writeCalendar(c);
+  return { busy: busy.length };
+}
+
+export class NoCalendarError extends Error {}
+
+/** The calendar an event belongs on: where it is already, else its mailbox, else any connected calendar. */
+function calendarAccount(ev: CalEvent, accounts: StoredAccount[], linked?: string): StoredAccount {
+  const byId = (id?: string) => accounts.find((a) => a.id === id && hasCalendar(a));
+  const a = byId(linked) || byId(ev.emailId?.split(':')[0]) || accounts.find(hasCalendar);
+  if (!a) throw new NoCalendarError('Connect your Gmail again and allow Google Calendar access to sync interviews.');
+  return a;
+}
+
+const gone = (e: unknown): boolean => e instanceof CalendarError && (e.status === 404 || e.status === 410);
+
+/** Create or update the Google event mirroring an app interview. */
+export async function pushEvent(ev: CalEvent, accounts: StoredAccount[], apiFor: (a: StoredAccount) => CalendarApi = calendarFor): Promise<{ gid: string; accountId: string }> {
+  const c = await readCalendar();
+  const link = c.links[ev.id];
+  const acct = calendarAccount(ev, accounts, link?.accountId);
+  const api = apiFor(acct);
+  const body = toGoogleEvent(ev);
+  let gid = '';
+  if (link && link.accountId === acct.id) {
+    try {
+      gid = (await api.update(link.gid, body)).id || link.gid;
+    } catch (e) {
+      // Deleted in Google Calendar: put it back, since the app still has it on the calendar.
+      if (!gone(e)) throw e;
+    }
+  }
+  if (!gid) gid = (await api.insert(body)).id || '';
+  const fresh = await readCalendar();
+  fresh.links[ev.id] = { accountId: acct.id, gid };
+  await writeCalendar(fresh);
+  return { gid, accountId: acct.id };
+}
+
+/** Delete the Google event mirroring an app interview, if there is one. */
+export async function removeEvent(id: string, accounts: StoredAccount[], apiFor: (a: StoredAccount) => CalendarApi = calendarFor): Promise<boolean> {
+  const c = await readCalendar();
+  const link = c.links[id];
+  if (!link) return false;
+  const acct = accounts.find((a) => a.id === link.accountId);
+  if (acct) {
+    try {
+      await apiFor(acct).remove(link.gid);
+    } catch (e) {
+      if (!gone(e)) throw e;
+    }
+  }
+  delete c.links[id];
+  await writeCalendar(c);
+  return true;
+}

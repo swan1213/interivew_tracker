@@ -29,7 +29,8 @@ export function loadEnvFile(file = resolve(ROOT, '.env')): void {
     }
   }
 }
-loadEnvFile();
+// Tests set their own environment; .env may point at real Google credentials or a production Redis.
+if (!process.env.VITEST) loadEnvFile();
 
 /** Runtime configuration, read lazily so tests and mock mode can set env first. */
 export const cfg = {

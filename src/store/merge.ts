@@ -2,6 +2,9 @@ import type { Application, CalEvent, DataSnapshot, Email, Notif } from '@/data/t
 import { stageLabel } from '@/data/constants';
 import type { Data } from './store';
 
+/** A busy block pulled from Google Calendar; one the server no longer sends was deleted or moved there. */
+const isPulledBusy = (v: CalEvent): boolean => v.kind === 'busy' && v.id.startsWith('gcal-');
+
 /**
  * Combine a fresh server snapshot with what the browser already holds.
  *
@@ -49,11 +52,12 @@ export function mergeSnapshot(local: Data, server: DataSnapshot): Data {
   const lEv = new Map(local.events.map((v) => [v.id, v]));
   const events: CalEvent[] = server.events.map((s) => {
     const l = lEv.get(s.id);
-    return l ? { ...s, added: l.added, rem: l.rem, date: l.date, start: l.start, end: l.end, co: l.co, pendingNote: l.pendingNote } : s;
+    // Busy blocks mirror the user's Google Calendar, so the server copy wins.
+    return l && s.kind !== 'busy' ? { ...s, added: l.added, rem: l.rem, date: l.date, start: l.start, end: l.end, co: l.co, pendingNote: l.pendingNote } : s;
   });
   const serverEv = new Set(server.events.map((v) => v.id));
   local.events.forEach((v) => {
-    if (!serverEv.has(v.id)) events.push(v);
+    if (!serverEv.has(v.id) && !isPulledBusy(v)) events.push(v);
   });
 
   const lNotif = new Map(local.notifs.map((n) => [n.id, n]));

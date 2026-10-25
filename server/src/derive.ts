@@ -5,6 +5,7 @@
  * notes, events added to the calendar) lives in the browser and is merged there.
  */
 import type { Account, ActivityItem, Application, CalEvent, DataSnapshot, Email, EvStage, Notif, StageKey, ThreadMsg } from '../../src/data/types';
+import { hasCalendar } from './google/calendar';
 import { agoMinutes, fmtT, lab, relLabel, timeLabel, whenLabel } from './time';
 import type { MailStore, StoredAccount, StoredThread } from './types';
 
@@ -54,6 +55,7 @@ export function accountView(a: StoredAccount, now: Date): Account {
     color: a.color,
     initial: a.initial,
     sendAs: a.name || a.email,
+    calendar: hasCalendar(a),
     sync: a.lastSync ? 'Synced ' + relLabel(a.lastSync, now).toLowerCase().replace(/^just now$/, 'just now') : 'Not synced yet',
   };
 }

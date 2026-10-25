@@ -42,6 +42,8 @@ export interface Account {
   initial: string;
   sendAs: string;
   sync: string;
+  /** Google Calendar sync is allowed for this mailbox (undefined in the demo). */
+  calendar?: boolean;
 }
 
 export interface Attachment { name: string; size: string }

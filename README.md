@@ -76,6 +76,7 @@ What happens next:
 - Classification uses **keyword rules** by default. Set `ANTHROPIC_API_KEY` to have Claude read each recruiter email and fill in category, summary, stated facts vs. assumptions, meeting times and deadlines (model: `ANTHROPIC_MODEL`, default `claude-opus-5-5`).
 - Replies are sent through the Gmail API in the original thread, only when you click *Send now*.
 - *Disconnect* revokes the token and deletes the mail cached for that account.
+- **Google Calendar, two-way.** Interviews you put on the app calendar (Add to calendar, drag, nudge, rename, reminders, Remove) are created, updated or deleted on the Google Calendar of the mailbox they came from, shortly after the change. Each sync also reads the next 60 days of your other Google Calendar events as busy blocks, so the slot picker and conflict warnings see them. Free, declined, all-day and the app's own events are not counted as busy. Needs the **Google Calendar API** enabled and the scope `https://www.googleapis.com/auth/calendar.events` on the consent screen; mailboxes connected before this feature must be connected again to grant it.
 
 Notes and limits:
 
@@ -99,6 +100,8 @@ Notes and limits:
 4. Redeploy. `https://<your-app>.vercel.app/api/health` should return `"configured":true`.
 
 A sync must finish within the function's 60-second limit; lower `GMAIL_MAX_MESSAGES` if it times out.
+
+Keep the production Redis credentials out of your local `.env`, or `npm run dev` reads and writes the live workspace. Tests never load `.env`.
 
 ### Provider boundary
 

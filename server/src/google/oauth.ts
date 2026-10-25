@@ -3,11 +3,15 @@ import { cfg } from '../config';
 import { b64url, sha256b64url } from '../crypto';
 import { readJson, removeKey, writeJson } from '../store';
 
+/** Create, update and delete events, and read the busy times on the user's calendars. */
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+
 export const SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/gmail.modify',
+  CALENDAR_SCOPE,
 ];
 
 export interface TokenSet {

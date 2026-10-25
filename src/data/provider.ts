@@ -1,4 +1,4 @@
-import type { Account, DataSnapshot, OutgoingMessage } from './types';
+import type { Account, CalEvent, DataSnapshot, OutgoingMessage } from './types';
 import { buildDemoData, DEMO_NOW_HOUR, DEMO_TODAY } from './demo';
 
 export interface Clock {
@@ -32,6 +32,10 @@ export interface MailProvider {
   markRead?(id: string): Promise<void>;
   setStar?(id: string, on: boolean): Promise<void>;
   archive?(id: string): Promise<void>;
+  /** Create or update the interview on the user's Google Calendar. */
+  pushEvent?(ev: CalEvent): Promise<void>;
+  /** Take the interview off the user's Google Calendar. */
+  removeEvent?(id: string): Promise<void>;
 }
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));

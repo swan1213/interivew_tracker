@@ -2,7 +2,9 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { createHash } from 'node:crypto';
 import { cfg, tokenSecret } from './config';
 import { decrypt, encrypt } from './crypto';
+import { busyEvents, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
 import { buildSnapshot } from './derive';
+import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
 import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest } from './google/oauth';
@@ -11,6 +13,7 @@ import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, typ
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
 import { mailFile, readAccounts, readMail, removeKey, writeAccounts, writeMail } from './store';
 import { syncAccount, updateStoredLabels } from './sync';
+import type { CalEvent } from '../../src/data/types';
 import type { StoredAccount } from './types';
 
 type Handler = (req: Request, res: Response) => Promise<void>;
@@ -183,6 +186,7 @@ export function createApi(): express.Express {
       const accts = await readAccounts();
       const mails = Object.fromEntries(await Promise.all(accts.map(async (a) => [a.id, await readMail(a.id)] as const)));
       const snapshot = buildSnapshot(accts, mails, new Date());
+      snapshot.events.push(...busyEvents(await readCalendar(), accts));
       const user = res.locals.user as SignedInUser;
       res.json({ snapshot: user.role === 'guest' ? redactForGuest(snapshot) : snapshot });
     }),
@@ -201,6 +205,12 @@ export function createApi(): express.Express {
           newMessages += (await syncAccount(a)).newMessages;
         } catch (e) {
           errors.push(a.email + ': ' + (e as Error).message);
+        }
+        if (!hasCalendar(a)) continue;
+        try {
+          await syncCalendar(a);
+        } catch (e) {
+          errors.push(a.email + ' calendar: ' + (e as Error).message);
         }
       }
       res.json({ newMessages, errors });
@@ -301,7 +311,38 @@ export function createApi(): express.Express {
       }
       await writeAccounts(accts.filter((x) => x.id !== a.id));
       await removeKey(mailFile(a.id));
+      // Events already on the Google Calendar stay there; the app just stops tracking them.
+      await dropCalendarAccount(a.id);
       res.json({ ok: true });
+    }),
+  );
+
+  // ---- Google Calendar: mirror interviews the user puts on (or takes off) the calendar ----
+  app.put(
+    '/calendar/events/:id',
+    requireRole('member'),
+    wrap(async (req, res) => {
+      const ev = ((req.body || {}) as { event?: CalEvent }).event;
+      const ok =
+        !!ev && ev.id === String(req.params.id) && ev.kind === 'interview' && /^\d{4}-\d{2}-\d{2}$/.test(String(ev.date)) &&
+        Number.isFinite(ev.start) && Number.isFinite(ev.end) && ev.start >= 0 && ev.end > ev.start && ev.end <= 48;
+      if (!ok) {
+        res.status(400).json({ error: 'Send an interview with a date and a start before its end.' });
+        return;
+      }
+      try {
+        res.json(await pushEvent({ ...ev, co: String(ev.co || 'Interview'), role: String(ev.role || 'Interview') }, await readAccounts()));
+      } catch (e) {
+        if (!(e instanceof NoCalendarError)) throw e;
+        res.status(409).json({ error: e.message, code: 'calendar_scope' });
+      }
+    }),
+  );
+  app.delete(
+    '/calendar/events/:id',
+    requireRole('member'),
+    wrap(async (req, res) => {
+      res.json({ removed: await removeEvent(String(req.params.id), await readAccounts()) });
     }),
   );
 

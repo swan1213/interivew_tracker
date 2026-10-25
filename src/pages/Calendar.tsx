@@ -1,11 +1,19 @@
 import { drag, useStore } from '@/store/store';
+import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
-import type { CalEvent, CalView } from '@/data/types';
+import type { Account, CalEvent, CalView } from '@/data/types';
 import { activeEvents, conflictCount, conflictOf } from '@/lib/calendar';
 import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { Empty, Fact, Seg } from '@/ui/bits';
+
+/** Calendars the interviews sync to; the demo shows its fictional ones. */
+function syncedCalendars(accts: Account[]): { label: string; ok: boolean }[] {
+  if (provider.isDemo) return [{ label: 'Google Calendar synced', ok: true }, { label: 'Microsoft Calendar synced', ok: true }];
+  if (!accts.length) return [];
+  return accts.some((a) => a.calendar) ? [{ label: 'Google Calendar synced', ok: true }] : [{ label: 'Reconnect Gmail to sync Google Calendar', ok: false }];
+}
 
 const range = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
 const CAL_TABS: { k: CalView; l: string }[] = [
@@ -76,14 +84,12 @@ export function CalendarPage() {
             <option value="UTC">UTC</option>
           </select>
         </label>
-        <span className="tag">
-          <span className="cdot" style={{ background: 'var(--ok)' }} />
-          Google Calendar synced
-        </span>
-        <span className="tag">
-          <span className="cdot" style={{ background: 'var(--ok)' }} />
-          Microsoft Calendar synced
-        </span>
+        {syncedCalendars(st.accts).map((c) => (
+          <span key={c.label} className="tag">
+            <span className="cdot" style={{ background: c.ok ? 'var(--ok)' : 'var(--warn)' }} />
+            {c.label}
+          </span>
+        ))}
       </div>
 
       <div className="calbody">
@@ -324,7 +330,7 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
             <Fact label="Interviewer">{v.interviewer}</Fact>
             <Fact label="Platform">{v.platform}</Fact>
             <Fact label="Meeting link">{v.link}</Fact>
-            <Fact label="Synced to">Google Calendar and Microsoft Calendar</Fact>
+            <Fact label="Synced to">{provider.isDemo ? 'Google Calendar and Microsoft Calendar' : v.added && st.accts.some((a) => a.calendar) ? 'Google Calendar' : 'Not synced'}</Fact>
           </>
         )}
       </div>

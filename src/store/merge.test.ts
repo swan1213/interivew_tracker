@@ -49,4 +49,15 @@ describe('merging a server snapshot with local workflow state', () => {
     expect(out.notifs.every((n) => !n.unread)).toBe(true);
     expect(out.accts).toEqual(server.accts);
   });
+
+  it('Google Calendar busy blocks follow the server; stale ones are dropped', () => {
+    const busy = (id: string, start: number) => ({ id, kind: 'busy' as const, co: 'Standup', role: 'Google Calendar', stage: 'busy' as const, date: '2026-10-27', start, end: start + 0.5, added: true });
+    const local = { ...buildDemoData() };
+    local.events = [...local.events, busy('gcal-g1-moved', 9), busy('gcal-g1-deleted', 13)];
+    const out = mergeSnapshot(local, { ...server, events: [...server.events, busy('gcal-g1-moved', 10)] });
+    expect(out.events.find((v) => v.id === 'gcal-g1-moved')?.start).toBe(10);
+    expect(out.events.some((v) => v.id === 'gcal-g1-deleted')).toBe(false);
+    // Hand-made busy blocks (the demo's) are local and stay.
+    expect(out.events.some((v) => v.id === 'b1')).toBe(true);
+  });
 });
