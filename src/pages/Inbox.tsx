@@ -26,7 +26,7 @@ export function Inbox() {
 
 function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
   const st = useStore();
-  const title = st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
+  const title = st.peer ? 'All mail with ' + st.peer : st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
   const companies = Array.from(new Set(all.map((e) => e.company).filter(Boolean))).sort();
   const sel = (key: keyof StateFields) => (ev: ChangeEvent<HTMLSelectElement>) => st.patch({ [key]: ev.target.value } as Partial<StateFields>);
 
@@ -36,6 +36,11 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
         <h1>
           {title} <span className="cnt">{rows.length}</span>
           <span className="sp" />
+          {st.peer && (
+            <button type="button" className="btn ghost sm" onClick={() => st.showPeer('')} aria-label="Show everyone's mail">
+              <Icon name="x" sm />
+            </button>
+          )}
           <button type="button" className="btn ghost sm" onClick={st.refreshAll} aria-label="Refresh">
             <Icon name="refresh" sm />
           </button>
@@ -172,6 +177,7 @@ function EmailRow({ e, selected }: { e: Email; selected: boolean }) {
           <span className="l1">
             <span className="snd">
               {e.fromName}
+              {e.thread.length > 1 ? ' (' + e.thread.length + ')' : ''}
               {e.company ? ' · ' + e.company : ''}
             </span>
             <span className="mut">{e.time}</span>
@@ -300,8 +306,15 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
           </span>
           <span className="sp" />
           <span className="mut">
-            From {e.fromName} &lt;{e.fromAddr}&gt;
+            {e.cat === 'sent' ? '' : 'From '}
+            {e.fromName} &lt;{e.fromAddr}&gt;
           </span>
+          {e.fromAddr && st.peer !== e.fromAddr.toLowerCase() && (
+            <button type="button" className="btn ghost sm" onClick={() => st.showPeer(e.fromAddr)} title={'Every conversation with ' + e.fromAddr + ', sent and received'}>
+              <Icon name="mail" sm />
+              All mail with this person
+            </button>
+          )}
         </div>
 
         {need && e.action && (
@@ -428,7 +441,14 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
                 {m.from.trim().charAt(0).toUpperCase()}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <b style={{ fontWeight: 600 }}>{m.from}</b> <span className="mut">&lt;{m.addr}&gt;</span>
+                <b style={{ fontWeight: 600 }}>{m.from}</b>{' '}
+                {m.mine ? (
+                  <span className="mut">&lt;{m.addr}&gt;</span>
+                ) : (
+                  <button type="button" className="mut" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={() => st.showPeer(m.addr)} title={'All mail with ' + m.addr}>
+                    &lt;{m.addr}&gt;
+                  </button>
+                )}
                 <div className="mut">{m.when}</div>
               </div>
             </div>

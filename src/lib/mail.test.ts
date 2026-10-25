@@ -4,7 +4,7 @@ import type { InboxFilters } from './mail';
 import { effCat, filterEmails, inView, matchSaved, previewOf, sortEmails } from './mail';
 
 const base: InboxFilters = {
-  view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', rangeFilter: 'all', ivFilter: 'all',
+  view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all',
   unreadOnly: false, actionOnly: false, savedKey: '', q: '', sortKey: 'newest',
 };
 const data = buildDemoData();
@@ -68,5 +68,14 @@ describe('inbox filtering', () => {
     const p = previewOf(data.emails[0]);
     expect(p.startsWith('Thanks for your interest')).toBe(true);
     expect(p.length).toBeLessThanOrEqual(110);
+  });
+
+  it('peer shows every conversation with one address, sent or received', () => {
+    const emails = [
+      { ...data.emails[0], id: 'in', fromAddr: 'Sam@Corp.example', peers: ['sam@corp.example'] },
+      { ...data.emails[1], id: 'cc', fromAddr: 'ana@hire.example', peers: ['ana@hire.example', 'sam@corp.example'] },
+      { ...data.emails[2], id: 'other', fromAddr: 'x@y.example', peers: ['x@y.example'] },
+    ];
+    expect(ids(filterEmails(emails, { ...base, peer: 'sam@corp.example' }, data.apps)).sort()).toEqual(['cc', 'in']);
   });
 });

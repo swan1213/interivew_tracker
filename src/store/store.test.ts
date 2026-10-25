@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
+import { GRID_END_HOUR, GRID_START_HOUR, HOUR_PX } from '@/data/constants';
 import { seedMembers } from '@/lib/roles';
 import { DEFAULT_SETTINGS, drag, useStore } from './store';
 
@@ -106,7 +107,7 @@ describe('store actions', () => {
 
   it('dragging an event snaps to half hours, clamps to the grid and reports conflicts', () => {
     drag.ev = 'v3';
-    st().dropEventAt('2026-10-29', 5 * 52 + 10); // ~13:10 → 13:00, overlaps doctor appointment
+    st().dropEventAt('2026-10-29', (13 - GRID_START_HOUR) * HOUR_PX + 10); // ~13:10 → 13:00, overlaps doctor appointment
     const v = st().events.find((x) => x.id === 'v3')!;
     expect(v.date).toBe('2026-10-29');
     expect(v.start).toBe(13);
@@ -114,7 +115,7 @@ describe('store actions', () => {
     expect(st().toast).toContain('conflicts with Doctor appointment');
     drag.ev = 'v3';
     st().dropEventAt('2026-10-30', 9999);
-    expect(st().events.find((x) => x.id === 'v3')!.end).toBe(19);
+    expect(st().events.find((x) => x.id === 'v3')!.end).toBe(GRID_END_HOUR);
   });
 
   it('disconnecting an account removes its mail and resets filters that pointed at it', () => {

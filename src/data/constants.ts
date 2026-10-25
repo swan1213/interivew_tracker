@@ -132,6 +132,7 @@ export const DATA_KEY = 'iflow.data.v1';
 export const DATA_VERSION = 1;
 
 /** Calendar grid: first hour shown, last hour shown, and pixel height per hour. */
-export const GRID_START_HOUR = 8;
-export const GRID_END_HOUR = 19;
+/** Week and day views cover the whole day (ET) and scroll; they open at the current time. */
+export const GRID_START_HOUR = 0;
+export const GRID_END_HOUR = 24;
 export const HOUR_PX = 52;

@@ -115,5 +115,19 @@ describe('sync → classify → derive with the mock Gmail', () => {
     const out = snap.emails.find((e) => e.subject === 'Coffee next week?')!;
     expect([out.cat, out.fromName, out.fromAddr, out.unread, out.needs, out.canReply]).toEqual(['sent', 'To: Sam Park', 'sam@corp.example', false, false, false]);
     expect(out.thread.map((m) => m.mine)).toEqual([true]);
+
+    // A reply arrives in a conversation whose earlier messages are past the newest-N cap: all of it comes along.
+    const old = msg('old', 'Jordan Lee <jordan.lee@gmail.example>', 'Ana Ruiz <ana@hire.example>', 'Following up on my application', 'Hi Ana, any update on the role?', ['SENT']);
+    api.messages.set('old', { ...old, threadId: 't-conv', internalDate: String(NOW.getTime() - 40 * 86_400_000) });
+    api.messages.set('reply', { ...msg('reply', 'Ana Ruiz <ana@hire.example>', 'Jordan Lee <jordan.lee@gmail.example>', 'Re: Following up on my application', 'Thanks Jordan, we would like to schedule an interview.', ['INBOX', 'UNREAD']), threadId: 't-conv', internalDate: String(NOW.getTime() + 120_000) });
+    const keep = process.env.GMAIL_MAX_MESSAGES;
+    process.env.GMAIL_MAX_MESSAGES = '1';
+    await sync.syncAccount(acct, api, NOW);
+    process.env.GMAIL_MAX_MESSAGES = keep;
+    const snap2 = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: await store.readMail(acct.id) }, NOW);
+    const conv = snap2.emails.find((e) => e.id === acct.id + ':t-conv')!;
+    expect(conv.thread.map((m) => [m.mine, m.addr])).toEqual([[true, 'jordan.lee@gmail.example'], [false, 'ana@hire.example']]);
+    expect(conv.peers).toEqual(['ana@hire.example']);
+    expect(out.peers).toEqual(['sam@corp.example']);
   });
 });

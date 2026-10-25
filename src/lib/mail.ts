@@ -39,6 +39,8 @@ export interface InboxFilters {
   catFilter: Cat | 'all';
   priFilter: Pri | 'all';
   coFilter: string;
+  /** Only conversations with this address, sent or received ('' = everyone). */
+  peer: string;
   rangeFilter: 'all' | 'today' | 'week';
   ivFilter: 'all' | IvStatus;
   unreadOnly: boolean;
@@ -77,6 +79,7 @@ export function filterEmails(all: Email[], f: InboxFilters, apps: Application[])
   if (f.catFilter !== 'all') list = list.filter((e) => effCat(e) === f.catFilter);
   if (f.priFilter !== 'all') list = list.filter((e) => e.pri === f.priFilter);
   if (f.coFilter !== 'all') list = list.filter((e) => e.company === f.coFilter);
+  if (f.peer) list = list.filter((e) => (e.peers || []).includes(f.peer) || e.fromAddr.toLowerCase() === f.peer);
   if (f.rangeFilter === 'today') list = list.filter((e) => e.ago <= 1440);
   if (f.rangeFilter === 'week') list = list.filter((e) => e.ago <= 10080);
   if (f.ivFilter !== 'all') list = list.filter((e) => e.ivStatus === f.ivFilter);

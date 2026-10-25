@@ -79,6 +79,8 @@ export function accountView(a: StoredAccount, now: Date, color = a.color): Accou
   };
 }
 
+const addressesIn = (header: string): string[] => (header.match(/[\w.+'-]+@[\w-]+(\.[\w-]+)+/g) || []).map((x) => x.toLowerCase());
+
 export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): Email | null {
   const msgs = [...t.messages].sort((a, b) => a.date.localeCompare(b.date));
   const cls = t.classification;
@@ -90,6 +92,8 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
   const replied = !sentOnly && latest.isMine;
   // Sent mail is listed by who it went to.
   const to = sentOnly ? parseAddress(head.to.split(',')[0] || '') : null;
+  const me = acct.email.toLowerCase();
+  const peers = [...new Set(msgs.flatMap((m) => (m.isMine ? addressesIn(m.to) : [m.fromAddr.toLowerCase()])))].filter((x) => x && x !== me);
   const id = acct.id + ':' + t.id;
   const labels = head.labelIds;
   const thread: ThreadMsg[] = msgs.map((m, i) => ({
@@ -105,6 +109,7 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
   return {
     id,
     acct: acct.id,
+    peers,
     fromName: to ? 'To: ' + (to.name || to.addr || 'no recipient') : head.fromName,
     fromAddr: to ? to.addr : head.fromAddr,
     company: cls.company,

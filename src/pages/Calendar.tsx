@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { drag, useStore } from '@/store/store';
 import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
@@ -37,6 +37,24 @@ function LinkOut({ url, children }: { url: string; children?: string }) {
       {children || url}
     </a>
   );
+}
+
+/** The date and decimal hour right now in ET, the zone event times are kept in. */
+function etNow(): { date: string; hour: number } {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const p = Object.fromEntries(parts.map((x) => [x.type, x.value]));
+  return { date: p.year + '-' + p.month + '-' + p.day, hour: Number(p.hour) + Number(p.minute) / 60 };
+}
+
+/** Now, ticking every minute; the demo stays on its fixed clock. */
+function useNow(today: string, nowHour: number): { date: string; hour: number } {
+  const [now, setNow] = useState(() => (provider.isDemo ? { date: today, hour: nowHour } : etNow()));
+  useEffect(() => {
+    if (provider.isDemo) return;
+    const t = setInterval(() => setNow(etNow()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return now;
 }
 
 const range = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
@@ -162,8 +180,17 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
   const ws = hrs(st.S.whStart);
   const we = hrs(st.S.whEnd);
   const hours = range(GRID_END_HOUR - GRID_START_HOUR).map((i) => GRID_START_HOUR + i);
+  const now = useNow(st.today, st.nowHour);
+  const showsToday = days.includes(now.date);
+  const wkRef = useRef<HTMLDivElement>(null);
+  // The grid covers the whole day: open it an hour before now, or at the start of the working day.
+  useEffect(() => {
+    const box = wkRef.current?.parentElement;
+    if (box) box.scrollTop = Math.max(0, ((showsToday ? now.hour - 1 : ws - 0.5) - GRID_START_HOUR) * HOUR_PX);
+    // Only when the visible days change, so the minute tick doesn't pull the view back.
+  }, [days.join(',')]);
   return (
-    <div className="wk">
+    <div className="wk" ref={wkRef}>
       <div className="wkh">
         <div style={{ height: 44 }} />
         <div>
@@ -187,6 +214,7 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
             </div>
             <div
               className="hrs"
+              style={{ height: (GRID_END_HOUR - GRID_START_HOUR) * HOUR_PX }}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -202,6 +230,11 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
               {evs.map((v) => (
                 <EventBlock key={v.id} v={v} active={active} lane={lanes.get(v.id)} />
               ))}
+              {dt === now.date && now.hour >= GRID_START_HOUR && now.hour < GRID_END_HOUR && (
+                <div className="nowline" style={{ top: (now.hour - GRID_START_HOUR) * HOUR_PX }} title={'Now, ' + fmtT(now.hour + off) + ' ' + st.S.tz}>
+                  <span>{fmtT(now.hour + off)}</span>
+                </div>
+              )}
             </div>
           </div>
         );

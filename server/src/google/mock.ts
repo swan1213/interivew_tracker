@@ -75,14 +75,24 @@ export class MockGmail implements GmailApi {
     demoAsGmail().forEach((m) => this.messages.set(m.id, m));
   }
 
-  /** Understands the label searches sync uses (is:unread, is:starred, in:inbox); other terms match everything. */
   async listMessageIds(query: string, max: number): Promise<string[]> {
+    return (await this.listMessages(query, max)).map((m) => m.id);
+  }
+
+  async getThread(threadId: string): Promise<GmailMessage[]> {
+    return Array.from(this.messages.values())
+      .filter((m) => m.threadId === threadId)
+      .sort((a, b) => parseInt(a.internalDate || '0', 10) - parseInt(b.internalDate || '0', 10));
+  }
+
+  /** Understands the label searches sync uses (is:unread, is:starred, in:inbox); other terms match everything. */
+  async listMessages(query: string, max: number): Promise<{ id: string; threadId: string }[]> {
     const need = [['is:unread', 'UNREAD'], ['is:starred', 'STARRED'], ['in:inbox', 'INBOX']].filter(([q]) => query.split(' ').includes(q)).map(([, l]) => l);
     return Array.from(this.messages.values())
       .filter((m) => need.every((l) => (m.labelIds || []).includes(l)))
       .sort((a, b) => parseInt(b.internalDate || '0', 10) - parseInt(a.internalDate || '0', 10))
       .slice(0, max)
-      .map((m) => m.id);
+      .map((m) => ({ id: m.id, threadId: m.threadId }));
   }
 
   async getMessage(id: string): Promise<GmailMessage> {

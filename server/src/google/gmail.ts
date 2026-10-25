@@ -9,6 +9,10 @@ import { refreshAccessToken } from './oauth';
 /** The slice of Gmail the app needs. Real and mock implementations share it. */
 export interface GmailApi {
   listMessageIds(query: string, max: number): Promise<string[]>;
+  /** Like listMessageIds, with the conversation each message belongs to. */
+  listMessages(query: string, max: number): Promise<{ id: string; threadId: string }[]>;
+  /** Every message in a conversation, sent and received, oldest first. */
+  getThread(threadId: string): Promise<GmailMessage[]>;
   getMessage(id: string, format?: 'full' | 'minimal'): Promise<GmailMessage>;
   modifyThread(threadId: string, add: string[], remove: string[]): Promise<void>;
   send(raw: string, threadId?: string): Promise<{ id: string }>;
@@ -64,18 +68,26 @@ export class RealGmail implements GmailApi {
     }
   }
 
-  async listMessageIds(query: string, max: number): Promise<string[]> {
-    const ids: string[] = [];
+  async listMessages(query: string, max: number): Promise<{ id: string; threadId: string }[]> {
+    const out: { id: string; threadId: string }[] = [];
     let pageToken = '';
-    while (ids.length < max) {
-      const q = new URLSearchParams({ q: query, maxResults: String(Math.min(100, max - ids.length)) });
+    while (out.length < max) {
+      const q = new URLSearchParams({ q: query, maxResults: String(Math.min(100, max - out.length)) });
       if (pageToken) q.set('pageToken', pageToken);
-      const j = await this.call<{ messages?: { id: string }[]; nextPageToken?: string }>('/messages?' + q.toString());
-      (j.messages || []).forEach((m) => ids.push(m.id));
+      const j = await this.call<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>('/messages?' + q.toString());
+      out.push(...(j.messages || []));
       if (!j.nextPageToken) break;
       pageToken = j.nextPageToken;
     }
-    return ids;
+    return out;
+  }
+
+  async listMessageIds(query: string, max: number): Promise<string[]> {
+    return (await this.listMessages(query, max)).map((m) => m.id);
+  }
+
+  async getThread(threadId: string): Promise<GmailMessage[]> {
+    return (await this.call<{ messages?: GmailMessage[] }>('/threads/' + encodeURIComponent(threadId) + '?format=full')).messages || [];
   }
 
   getMessage(id: string, format: 'full' | 'minimal' = 'full'): Promise<GmailMessage> {

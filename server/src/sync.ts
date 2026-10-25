@@ -21,13 +21,15 @@ async function pooled<T>(items: T[], width: number, fn: (x: T) => Promise<void>)
 }
 
 /**
- * Pull recent mail for one account: new messages are fetched, filtered to
- * job-related ones, parsed and classified; known messages get their labels
- * (read, starred, archived) refreshed so the UI mirrors Gmail.
+ * Pull recent mail for one account: every conversation with a new message is
+ * fetched whole (sent and received, like Gmail shows it), parsed and classified;
+ * known messages get their labels (read, starred, archived) refreshed so the UI
+ * mirrors Gmail.
  */
 export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number }> {
   const mail = await readMail(acct.id);
-  const ids = await api.listMessageIds(cfg.syncQuery, cfg.maxMessages);
+  const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
+  const ids = listed.map((m) => m.id);
   const known = new Map<string, StoredThread>();
   for (const t of Object.values(mail.threads)) for (const m of t.messages) known.set(m.id, t);
   // With the job filter off, mail it skipped earlier is fetched now.
@@ -56,23 +58,22 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
     }
   }
 
-  await pooled(
-    ids.filter((id) => !known.has(id) && !skipped.has(id)),
-    4,
-    async (id) => {
-      const m = await api.getMessage(id, 'full');
-      const pm = parseMessage(m, acct.email);
-      if (cfg.jobFilter && !pm.isMine && !isJobRelated(pm)) {
-        skipped.add(id);
-        return;
-      }
-      const t = (mail.threads[pm.threadId] ||= { id: pm.threadId, messages: [] });
-      if (!t.messages.some((x) => x.id === pm.id)) {
-        t.messages.push(pm);
-        added++;
-      }
-    },
-  );
+  // Fetch each conversation with something new in full, so its earlier messages come
+  // along even when they are older than the newest GMAIL_MAX_MESSAGES.
+  const threadIds = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
+  await pooled(threadIds, 3, async (threadId) => {
+    const msgs = (await api.getThread(threadId)).map((m) => parseMessage(m, acct.email));
+    if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
+      msgs.forEach((pm) => skipped.add(pm.id));
+      return;
+    }
+    const t = (mail.threads[threadId] ||= { id: threadId, messages: [] });
+    for (const pm of msgs) {
+      if (t.messages.some((x) => x.id === pm.id)) continue;
+      t.messages.push(pm);
+      added++;
+    }
+  });
 
   for (const t of Object.values(mail.threads)) {
     t.messages.sort((a, b) => a.date.localeCompare(b.date));

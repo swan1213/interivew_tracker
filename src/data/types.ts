@@ -59,6 +59,8 @@ export interface ThreadMsg {
 }
 
 export interface Email {
+  /** Everyone else in the conversation (lower-case addresses), for "all mail with this person". */
+  peers?: string[];
   id: string;
   acct: string;
   fromName: string;

@@ -47,6 +47,8 @@ export interface StateFields extends Data {
   catFilter: Cat | 'all';
   priFilter: Pri | 'all';
   coFilter: string;
+  /** Only conversations with this address, sent or received ('' = everyone). */
+  peer: string;
   rangeFilter: RangeFilter;
   ivFilter: 'all' | IvStatus;
   sortKey: SortKey;
@@ -119,6 +121,8 @@ export interface Actions {
   toggleIns: () => void;
   clearFilters: () => void;
   setSearch: (q: string) => void;
+  /** Show every conversation with one address, like searching it in Gmail ('' clears). */
+  showPeer: (addr: string) => void;
   pickTone: (tone: Tone) => void;
   genReply: () => void;
   regen: () => void;
@@ -229,7 +233,7 @@ function initialFields(): StateFields {
     emails: data.emails, apps: data.apps, events: data.events, accts: data.accts, notifs: data.notifs, activity: data.activity,
     today: clock.today, nowHour: clock.nowHour,
     page: canSee(role, route.page) ? route.page : homePage(role), view: route.view ?? 'inbox',
-    selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', rangeFilter: 'all', ivFilter: 'all',
+    selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all',
     sortKey: 'newest', unreadOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
     tone: prefs.tone ?? 'professional', variant: 0, mods: NO_MODS, aiDraft: '', chosen: [],
     compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compText: '', sendOpen: false,
@@ -329,9 +333,10 @@ export const useStore = create<AppState>()((set, get) => {
       set((s) =>
         s.emails.length === 0
           ? { emails: buildDemoData().emails, selId: 'e1' }
-          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', rangeFilter: 'all', ivFilter: 'all', unreadOnly: false, actionOnly: false, savedKey: '', q: '' },
+          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all', unreadOnly: false, actionOnly: false, savedKey: '', q: '' },
       ),
     setSearch: (q) => set({ q, page: 'inbox', view: 'inbox', savedKey: '' }),
+    showPeer: (addr) => set({ peer: addr.trim().toLowerCase(), page: 'inbox', view: 'inbox', savedKey: '', q: '' }),
 
     // ---- reply assistant ----
     pickTone: (tone) =>
