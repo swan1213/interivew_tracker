@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { cfg } from '../config';
 import { b64url, sha256b64url } from '../crypto';
+import { readJson, removeKey, writeJson } from '../store';
 
 export const SCOPES = [
   'openid',
@@ -23,27 +24,31 @@ export interface UserInfo { email: string; name?: string; picture?: string; emai
 export type AuthPurpose = 'login' | 'connect';
 const LOGIN_SCOPES = ['openid', 'email', 'profile'];
 
-/** Pending authorization requests keyed by state; entries expire after ten minutes. */
-const pending = new Map<string, { verifier: string; at: number; purpose: AuthPurpose }>();
+/**
+ * Pending authorization requests keyed by state; entries expire after ten minutes.
+ * Kept in the store so the callback can land on a different serverless instance.
+ */
+const PENDING_TTL_S = 10 * 60;
+const pendingKey = (state: string): string => 'auth-' + state;
+interface Pending { verifier: string; at: number; purpose: AuthPurpose }
 
-export function beginAuth(purpose: AuthPurpose = 'connect'): { state: string; verifier: string } {
+export async function beginAuth(purpose: AuthPurpose = 'connect'): Promise<{ state: string; verifier: string }> {
   const state = b64url(randomBytes(24));
   const verifier = b64url(randomBytes(48));
-  pending.set(state, { verifier, at: Date.now(), purpose });
-  for (const [k, v] of pending) if (Date.now() - v.at > 10 * 60 * 1000) pending.delete(k);
+  await writeJson(pendingKey(state), { verifier, at: Date.now(), purpose } satisfies Pending, PENDING_TTL_S);
   return { state, verifier };
 }
 
 /** Consume a pending request: its PKCE verifier and what it was for. */
-export function takeAuthRequest(state: string): { verifier: string; purpose: AuthPurpose } | null {
-  const p = pending.get(state);
+export async function takeAuthRequest(state: string): Promise<{ verifier: string; purpose: AuthPurpose } | null> {
+  const p = await readJson<Pending | null>(pendingKey(state), null);
   if (!p) return null;
-  pending.delete(state);
-  return Date.now() - p.at > 10 * 60 * 1000 ? null : { verifier: p.verifier, purpose: p.purpose };
+  await removeKey(pendingKey(state));
+  return Date.now() - p.at > PENDING_TTL_S * 1000 ? null : { verifier: p.verifier, purpose: p.purpose };
 }
 
-export function takeAuth(state: string): string | null {
-  return takeAuthRequest(state)?.verifier ?? null;
+export async function takeAuth(state: string): Promise<string | null> {
+  return (await takeAuthRequest(state))?.verifier ?? null;
 }
 
 export function authUrl(state: string, verifier: string, purpose: AuthPurpose = 'connect'): string {

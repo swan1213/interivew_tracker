@@ -78,6 +78,13 @@ export const cfg = {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
   },
+  /** Upstash Redis REST endpoint; Vercel's Upstash integration sets the KV_* names. Empty means files in dataDir. */
+  get redisUrl(): string {
+    return process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL || '';
+  },
+  get redisToken(): string {
+    return process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN || '';
+  },
   /** True when Google sign-in can actually run. */
   get configured(): boolean {
     return cfg.mock || (!!cfg.clientId && !!cfg.clientSecret);
@@ -87,6 +94,7 @@ export const cfg = {
 /** Secret used to encrypt tokens at rest. Generated once and kept outside git when not provided. */
 export function tokenSecret(): string {
   if (process.env.TOKEN_SECRET) return process.env.TOKEN_SECRET;
+  if (process.env.VERCEL) throw new Error('Set TOKEN_SECRET (a long random string) in the Vercel project settings, then redeploy.');
   mkdirSync(cfg.dataDir, { recursive: true });
   const f = resolve(cfg.dataDir, 'secret.key');
   if (!existsSync(f)) writeFileSync(f, randomBytes(32).toString('hex'), { mode: 0o600 });

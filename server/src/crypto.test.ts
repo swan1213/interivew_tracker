@@ -17,10 +17,10 @@ describe('token encryption and OAuth helpers', () => {
     expect(sha256b64url('abc')).toBe('ungWv48Bz-pBQUDeXa4iI7ADYaOWF3qctBD_YfIAFa0');
   });
 
-  it('PKCE state is single use and the auth URL carries the challenge', () => {
+  it('PKCE state is single use and the auth URL carries the challenge', async () => {
     process.env.GOOGLE_CLIENT_ID = 'client-id-123';
     process.env.APP_URL = 'http://localhost:5173';
-    const { state, verifier } = beginAuth();
+    const { state, verifier } = await beginAuth();
     const url = new URL(authUrl(state, verifier));
     expect(url.origin + url.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
     expect(url.searchParams.get('client_id')).toBe('client-id-123');
@@ -29,9 +29,9 @@ describe('token encryption and OAuth helpers', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('access_type')).toBe('offline');
     expect(url.searchParams.get('scope')).toContain('gmail.modify');
-    expect(takeAuth(state)).toBe(verifier);
-    expect(takeAuth(state)).toBeNull();
-    expect(takeAuth('nope')).toBeNull();
+    expect(await takeAuth(state)).toBe(verifier);
+    expect(await takeAuth(state)).toBeNull();
+    expect(await takeAuth('nope')).toBeNull();
   });
 
   it('builds a threaded RFC 2822 reply', () => {

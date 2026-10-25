@@ -12,3 +12,4 @@ server/data/
 server/data-mock/
 client_secret*.json
 *.apps.googleusercontent.com.json
+.vercel

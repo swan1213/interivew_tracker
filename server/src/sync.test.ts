@@ -26,7 +26,7 @@ describe('sync → classify → derive with the mock Gmail', () => {
     derive = await import('./derive');
     store = await import('./store');
     mock = await import('./google/mock');
-    store.writeAccounts([acct]);
+    await store.writeAccounts([acct]);
     api = new mock.MockGmail();
     // Rebuild the fixture on the test clock so dates match the demo text.
     api.messages.clear();
@@ -36,7 +36,7 @@ describe('sync → classify → derive with the mock Gmail', () => {
   it('first sync stores and classifies every job-related thread', async () => {
     const r = await sync.syncAccount(acct, api, NOW);
     expect(r.newMessages).toBe(13); // 12 threads, one with an earlier message
-    const mail = store.readMail(acct.id);
+    const mail = await store.readMail(acct.id);
     expect(Object.keys(mail.threads)).toHaveLength(12);
     expect(Object.values(mail.threads).every((t) => t.classification)).toBe(true);
     expect(mail.threads['t-e7'].messages).toHaveLength(2);
@@ -47,9 +47,9 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(r.newMessages).toBe(0);
   });
 
-  it('derives emails, applications, events, notifications and activity', () => {
-    const accts = store.readAccounts();
-    const snap = derive.buildSnapshot(accts, { [acct.id]: store.readMail(acct.id) }, NOW);
+  it('derives emails, applications, events, notifications and activity', async () => {
+    const accts = await store.readAccounts();
+    const snap = derive.buildSnapshot(accts, { [acct.id]: await store.readMail(acct.id) }, NOW);
     expect(snap.accts[0]).toMatchObject({ id: 'g-test', addr: 'jordan.lee@gmail.example', provider: 'Gmail' });
     expect(snap.emails).toHaveLength(12);
     const amazon = snap.emails.find((e) => e.company === 'Amazon')!;
@@ -81,13 +81,13 @@ describe('sync → classify → derive with the mock Gmail', () => {
   });
 
   it('label changes and a sent reply are reflected after the next sync', async () => {
-    const mail = store.readMail(acct.id);
+    const mail = await store.readMail(acct.id);
     const e1 = mail.threads['t-e1'];
     await api.modifyThread('t-e1', [], ['UNREAD']);
     api.now = () => NOW.getTime() + 60_000;
     await api.send(Buffer.from('From: Jordan <jordan.lee@gmail.example>\r\nSubject: Re: test\r\nContent-Type: text/plain\r\n\r\nThese times work.').toString('base64url'), 't-e1');
     await sync.syncAccount(acct, api, NOW);
-    const snap = derive.buildSnapshot(store.readAccounts(), { [acct.id]: store.readMail(acct.id) }, NOW);
+    const snap = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: await store.readMail(acct.id) }, NOW);
     const ms = snap.emails.find((e) => e.company === 'Microsoft')!;
     expect(ms.unread).toBe(false);
     expect(ms.thread).toHaveLength(2);

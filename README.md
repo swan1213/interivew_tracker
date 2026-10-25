@@ -89,6 +89,17 @@ Notes and limits:
 
 `npm run build` then `npm start` serves the built app and the API from one Node process on port 8787 (set `PORT`). Set `APP_URL` to that origin and register `${APP_URL}/api/auth/google/callback` with Google.
 
+### Vercel
+
+`vercel.json` runs `npm run build:vercel`, which builds the site and bundles the API into one serverless function at `/api` (`scripts/vercel-build.mjs`, Build Output API). Vercel's disk does not persist, so accounts, mail, the team and pending sign-ins live in Upstash Redis instead of `server/data/`.
+
+1. In the Vercel project, *Storage → Create Database → Upstash (Redis)* and connect it to the project. That sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` work too).
+2. *Settings → Environment Variables*: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_EMAIL`, `TOKEN_SECRET` (a long random string; required here, and changing it signs everyone out and invalidates stored Google tokens), `APP_URL=https://<your-app>.vercel.app`, optionally `ANTHROPIC_API_KEY`.
+3. In Google Cloud Console add the redirect URI `https://<your-app>.vercel.app/api/auth/google/callback`.
+4. Redeploy. `https://<your-app>.vercel.app/api/health` should return `"configured":true`.
+
+A sync must finish within the function's 60-second limit; lower `GMAIL_MAX_MESSAGES` if it times out.
+
 ### Provider boundary
 
 Everything the UI needs sits behind `MailProvider` in `src/data/provider.ts` (`clock`, `load`, `sync`, `send`, `connectAccount`, `disconnectAccount`, plus optional `markRead`, `setStar`, `archive`). `DemoMailProvider` holds fictional data; `ApiMailProvider` talks to the server. `detectRuntime()` picks one from `/api/health` before the app mounts. The server owns the mail and the derived applications and events; the browser owns workflow state (category overrides, done flags, manual kanban moves, notes, calendar additions), merged in `src/store/merge.ts`.

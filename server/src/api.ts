@@ -9,7 +9,7 @@ import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthR
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
-import { mailFile, readAccounts, readMail, removeFile, writeAccounts, writeMail } from './store';
+import { mailFile, readAccounts, readMail, removeKey, writeAccounts, writeMail } from './store';
 import { syncAccount, updateStoredLabels } from './sync';
 import type { StoredAccount } from './types';
 
@@ -41,61 +41,71 @@ export function createApi(): express.Express {
   const notOnTeam = (email: string) => email + ' is not on this workspace’s team. Ask an admin to add you.';
 
   /** Sign in to the app. Mock mode signs in as ?as=<email> (default: the first owner) without Google. */
-  app.get('/auth/login', (req, res) => {
-    if (!cfg.configured) {
-      res.status(503).json({ error: 'Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env and restart.' });
-      return;
-    }
-    if (cfg.mock) {
-      const as = normEmail(String(req.query.as || '')) || cfg.adminEmails[0];
-      const m = findMember(as);
-      if (!m) {
-        authError(res, notOnTeam(as));
+  app.get(
+    '/auth/login',
+    wrap(async (req, res) => {
+      if (!cfg.configured) {
+        res.status(503).json({ error: 'Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env and restart.' });
         return;
       }
-      setSessionCookie(res, m.email, m.name);
-      home(res);
-      return;
-    }
-    const { state, verifier } = beginAuth('login');
-    res.redirect(authUrl(state, verifier, 'login'));
-  });
+      if (cfg.mock) {
+        const as = normEmail(String(req.query.as || '')) || cfg.adminEmails[0];
+        const m = await findMember(as);
+        if (!m) {
+          authError(res, notOnTeam(as));
+          return;
+        }
+        setSessionCookie(res, m.email, m.name);
+        home(res);
+        return;
+      }
+      const { state, verifier } = await beginAuth('login');
+      res.redirect(authUrl(state, verifier, 'login'));
+    }),
+  );
 
   app.post('/auth/logout', (_req, res) => {
     clearSessionCookie(res);
     res.json({ ok: true });
   });
 
-  app.get('/auth/me', (req, res) => {
-    const r = userOf(req);
-    if (!r.user) {
-      if (r.status === 403) clearSessionCookie(res);
-      res.status(r.status || 401).json({ error: r.error, code: r.code });
-      return;
-    }
-    res.json({ user: r.user });
-  });
+  app.get(
+    '/auth/me',
+    wrap(async (req, res) => {
+      const r = await userOf(req);
+      if (!r.user) {
+        if (r.status === 403) clearSessionCookie(res);
+        res.status(r.status || 401).json({ error: r.error, code: r.code });
+        return;
+      }
+      res.json({ user: r.user });
+    }),
+  );
 
   /** Connect a Gmail mailbox (members and admins). */
-  app.get('/auth/google/start', requireRole('member'), (_req, res) => {
-    if (!cfg.configured) {
-      res.status(503).json({ error: 'Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env and restart.' });
-      return;
-    }
-    const { state, verifier } = beginAuth('connect');
-    if (cfg.mock) {
-      res.redirect('/api/auth/google/callback?code=mock&state=' + encodeURIComponent(state));
-      return;
-    }
-    res.redirect(authUrl(state, verifier));
-  });
+  app.get(
+    '/auth/google/start',
+    requireRole('member'),
+    wrap(async (_req, res) => {
+      if (!cfg.configured) {
+        res.status(503).json({ error: 'Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env and restart.' });
+        return;
+      }
+      const { state, verifier } = await beginAuth('connect');
+      if (cfg.mock) {
+        res.redirect('/api/auth/google/callback?code=mock&state=' + encodeURIComponent(state));
+        return;
+      }
+      res.redirect(authUrl(state, verifier));
+    }),
+  );
 
   app.get(
     '/auth/google/callback',
     wrap(async (req, res) => {
       const back = (q: string) => res.redirect(cfg.appUrl + '/accounts?' + q);
       const q = req.query as Record<string, string | undefined>;
-      const pend = q.state ? takeAuthRequest(q.state) : null;
+      const pend = q.state ? await takeAuthRequest(q.state) : null;
       if (pend?.purpose === 'login') {
         if (q.error || !q.code) {
           authError(res, q.error === 'access_denied' ? 'Sign-in was cancelled.' : 'Google sign-in failed: ' + (q.error || 'no code returned'));
@@ -107,12 +117,12 @@ export function createApi(): express.Express {
           authError(res, 'Google did not return a verified email address.');
           return;
         }
-        const m = findMember(who.email);
+        const m = await findMember(who.email);
         if (!m) {
           authError(res, notOnTeam(normEmail(who.email)));
           return;
         }
-        rememberName(m.email, who.name || '');
+        await rememberName(m.email, who.name || '');
         setSessionCookie(res, m.email, who.name || m.name);
         home(res);
         return;
@@ -127,7 +137,7 @@ export function createApi(): express.Express {
         return;
       }
       // The browser returns from Google with its session cookie (SameSite=Lax allows top-level navigation).
-      const actor = userOf(req).user;
+      const actor = (await userOf(req)).user;
       if (!actor || !atLeast(actor.role, 'member')) {
         back('error=' + encodeURIComponent('Sign in as a member or admin to connect a mailbox.'));
         return;
@@ -139,7 +149,7 @@ export function createApi(): express.Express {
         return;
       }
       const secret = tokenSecret();
-      const accts = readAccounts();
+      const accts = await readAccounts();
       const email = info.email.toLowerCase();
       const id = 'g-' + createHash('sha1').update(email).digest('hex').slice(0, 8);
       const existing = accts.find((a) => a.id === id);
@@ -161,25 +171,29 @@ export function createApi(): express.Express {
         lastSync: existing?.lastSync ?? null,
         scopes: (tokens.scope || '').split(' ').filter(Boolean),
       };
-      writeAccounts(existing ? accts.map((a) => (a.id === id ? acct : a)) : accts.concat([acct]));
+      await writeAccounts(existing ? accts.map((a) => (a.id === id ? acct : a)) : accts.concat([acct]));
       back('connected=' + encodeURIComponent(id));
     }),
   );
 
-  app.get('/snapshot', requireRole('guest'), (_req, res) => {
-    const accts = readAccounts();
-    const mails = Object.fromEntries(accts.map((a) => [a.id, readMail(a.id)]));
-    const snapshot = buildSnapshot(accts, mails, new Date());
-    const user = res.locals.user as SignedInUser;
-    res.json({ snapshot: user.role === 'guest' ? redactForGuest(snapshot) : snapshot });
-  });
+  app.get(
+    '/snapshot',
+    requireRole('guest'),
+    wrap(async (_req, res) => {
+      const accts = await readAccounts();
+      const mails = Object.fromEntries(await Promise.all(accts.map(async (a) => [a.id, await readMail(a.id)] as const)));
+      const snapshot = buildSnapshot(accts, mails, new Date());
+      const user = res.locals.user as SignedInUser;
+      res.json({ snapshot: user.role === 'guest' ? redactForGuest(snapshot) : snapshot });
+    }),
+  );
 
   app.post(
     '/sync',
     requireRole('member'),
     wrap(async (req, res) => {
       const accountId = (req.body as { accountId?: string } | undefined)?.accountId;
-      const accts = readAccounts().filter((a) => !accountId || a.id === accountId);
+      const accts = (await readAccounts()).filter((a) => !accountId || a.id === accountId);
       let newMessages = 0;
       const errors: string[] = [];
       for (const a of accts) {
@@ -193,8 +207,8 @@ export function createApi(): express.Express {
     }),
   );
 
-  const acctOr404 = (res: Response, id: string): StoredAccount | null => {
-    const a = readAccounts().find((x) => x.id === id);
+  const acctOr404 = async (res: Response, id: string): Promise<StoredAccount | null> => {
+    const a = (await readAccounts()).find((x) => x.id === id);
     if (!a) res.status(404).json({ error: 'Unknown account' });
     return a || null;
   };
@@ -205,11 +219,11 @@ export function createApi(): express.Express {
       requireRole('member'),
       wrap(async (req, res) => {
         const { acctId, threadId } = splitId(String(req.params.id));
-        const a = acctOr404(res, acctId);
+        const a = await acctOr404(res, acctId);
         if (!a) return;
         const { add, remove } = labels((req.body as { on?: boolean }) || {});
         await gmailFor(a).modifyThread(threadId, add, remove);
-        updateStoredLabels(a.id, threadId, add, remove);
+        await updateStoredLabels(a.id, threadId, add, remove);
         res.json({ ok: true });
       }),
     );
@@ -223,14 +237,14 @@ export function createApi(): express.Express {
     wrap(async (req, res) => {
       const { acctId, threadId } = splitId(String(req.params.id));
       const body = (req.body || {}) as { accountId?: string; body?: string; mode?: string; to?: string };
-      const a = acctOr404(res, body.accountId || acctId);
+      const a = await acctOr404(res, body.accountId || acctId);
       if (!a) return;
       const text = (body.body || '').trim();
       if (!text) {
         res.status(400).json({ error: 'The message is empty.' });
         return;
       }
-      const t = readMail(acctId).threads[threadId];
+      const t = (await readMail(acctId)).threads[threadId];
       const head = t ? [...t.messages].reverse().find((m) => !m.isMine) || t.messages[t.messages.length - 1] : undefined;
       if (!head) {
         res.status(404).json({ error: 'Unknown conversation' });
@@ -254,14 +268,14 @@ export function createApi(): express.Express {
       const r = await gmailFor(a).send(raw, forward ? undefined : threadId);
       if (!forward) {
         // Record the reply in the stored thread right away; the next sync refreshes its labels.
-        const mail = readMail(acctId);
+        const mail = await readMail(acctId);
         const thread = mail.threads[threadId];
         if (thread && !thread.messages.some((m) => m.id === r.id)) {
           thread.messages.push({
             id: r.id, threadId, fromName: a.name, fromAddr: a.email, to: head.fromName + ' <' + head.fromAddr + '>', subject, date: new Date().toISOString(),
             bodyText: text, atts: [], labelIds: ['SENT'], messageId: '', inReplyTo: head.messageId, references: head.references, isMine: true,
           });
-          writeMail(acctId, mail);
+          await writeMail(acctId, mail);
         }
       }
       res.json({ id: r.id });
@@ -272,7 +286,7 @@ export function createApi(): express.Express {
     '/accounts/:id',
     requireRole('member'),
     wrap(async (req, res) => {
-      const accts = readAccounts();
+      const accts = await readAccounts();
       const a = accts.find((x) => x.id === String(req.params.id));
       if (!a) {
         res.status(404).json({ error: 'Unknown account' });
@@ -285,30 +299,46 @@ export function createApi(): express.Express {
           /* best effort */
         }
       }
-      writeAccounts(accts.filter((x) => x.id !== a.id));
-      removeFile(mailFile(a.id));
+      await writeAccounts(accts.filter((x) => x.id !== a.id));
+      await removeKey(mailFile(a.id));
       res.json({ ok: true });
     }),
   );
 
   // ---- team and roles (admins only) ----
-  const teamReply = (res: Response, r: TeamResult) => {
+  const teamReply = async (res: Response, r: TeamResult) => {
     if (r.error) res.status(r.status).json({ error: r.error });
-    else res.status(r.status).json({ member: r.member, team: listTeam() });
+    else res.status(r.status).json({ member: r.member, team: await listTeam() });
   };
-  app.get('/team', requireRole('admin'), (_req, res) => {
-    res.json({ team: listTeam() });
-  });
-  app.post('/team', requireRole('admin'), (req, res) => {
-    const b = (req.body || {}) as { name?: string; email?: string; role?: string };
-    teamReply(res, addTeamMember(b.name || '', b.email || '', b.role));
-  });
-  app.patch('/team/:email', requireRole('admin'), (req, res) => {
-    teamReply(res, setTeamRole(String(req.params.email), ((req.body || {}) as { role?: string }).role));
-  });
-  app.delete('/team/:email', requireRole('admin'), (req, res) => {
-    teamReply(res, removeTeamMember(String(req.params.email), (res.locals.user as SignedInUser).email));
-  });
+  app.get(
+    '/team',
+    requireRole('admin'),
+    wrap(async (_req, res) => {
+      res.json({ team: await listTeam() });
+    }),
+  );
+  app.post(
+    '/team',
+    requireRole('admin'),
+    wrap(async (req, res) => {
+      const b = (req.body || {}) as { name?: string; email?: string; role?: string };
+      await teamReply(res, await addTeamMember(b.name || '', b.email || '', b.role));
+    }),
+  );
+  app.patch(
+    '/team/:email',
+    requireRole('admin'),
+    wrap(async (req, res) => {
+      await teamReply(res, await setTeamRole(String(req.params.email), ((req.body || {}) as { role?: string }).role));
+    }),
+  );
+  app.delete(
+    '/team/:email',
+    requireRole('admin'),
+    wrap(async (req, res) => {
+      await teamReply(res, await removeTeamMember(String(req.params.email), (res.locals.user as SignedInUser).email));
+    }),
+  );
 
   app.use((req, res) => {
     res.status(404).json({ error: 'No such API route: ' + req.method + ' ' + req.path });

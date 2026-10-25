@@ -66,10 +66,10 @@ export const sessionOf = (req: Request): Session | null => verifySession(readCoo
 /** The signed-in person with their current role, or the reason there is none. */
 export type AuthCode = 'signed_out' | 'not_on_team' | 'forbidden';
 
-export function userOf(req: Request): { user?: SignedInUser; status?: 401 | 403; error?: string; code?: AuthCode } {
+export async function userOf(req: Request): Promise<{ user?: SignedInUser; status?: 401 | 403; error?: string; code?: AuthCode }> {
   const s = sessionOf(req);
   if (!s) return { status: 401, error: 'Sign in to continue.', code: 'signed_out' };
-  const m = findMember(s.email);
+  const m = await findMember(s.email);
   if (!m) return { status: 403, error: s.email + ' is not on this workspace’s team. Ask an admin to add you.', code: 'not_on_team' };
   return { user: { email: m.email, name: m.name !== m.email ? m.name : s.name || m.email, role: m.role, owner: !!m.owner } };
 }
@@ -78,8 +78,8 @@ export const atLeast = (role: Role, min: Role): boolean => RANK[role] >= RANK[mi
 
 /** Middleware: 401 without a session, 403 when the role is below `min`. Puts the user on res.locals.user. */
 export function requireRole(min: Role) {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    const r = userOf(req);
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const r = await userOf(req);
     if (!r.user) {
       if (r.status === 403) clearSessionCookie(res);
       res.status(r.status || 401).json({ error: r.error, code: r.code });

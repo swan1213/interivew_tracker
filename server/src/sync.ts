@@ -23,7 +23,7 @@ async function pooled<T>(items: T[], width: number, fn: (x: T) => Promise<void>)
  * (read, starred, archived) refreshed so the UI mirrors Gmail.
  */
 export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number }> {
-  const mail = readMail(acct.id);
+  const mail = await readMail(acct.id);
   const ids = await api.listMessageIds(cfg.syncQuery, cfg.maxMessages);
   const known = new Map<string, StoredThread>();
   for (const t of Object.values(mail.threads)) for (const m of t.messages) known.set(m.id, t);
@@ -73,15 +73,15 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
 
   mail.skipped = Array.from(skipped).slice(-5000);
   mail.lastSync = now.toISOString();
-  writeMail(acct.id, mail);
+  await writeMail(acct.id, mail);
   acct.lastSync = mail.lastSync;
-  writeAccounts(readAccounts().map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
+  await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
   return { newMessages: added };
 }
 
 /** Update stored labels right away so the next snapshot reflects a read/star/archive action. */
-export function updateStoredLabels(accountId: string, threadId: string, add: string[], remove: string[]): void {
-  const mail = readMail(accountId);
+export async function updateStoredLabels(accountId: string, threadId: string, add: string[], remove: string[]): Promise<void> {
+  const mail = await readMail(accountId);
   const t = mail.threads[threadId];
   if (!t) return;
   for (const m of t.messages) {
@@ -90,5 +90,5 @@ export function updateStoredLabels(accountId: string, threadId: string, add: str
     remove.forEach((l) => set.delete(l));
     m.labelIds = Array.from(set);
   }
-  writeMail(accountId, mail);
+  await writeMail(accountId, mail);
 }

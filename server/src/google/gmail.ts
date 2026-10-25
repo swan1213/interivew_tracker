@@ -24,7 +24,7 @@ export async function accessTokenFor(acct: StoredAccount): Promise<string> {
   acct.accessToken = encrypt(t.access_token, secret);
   acct.expiresAt = Date.now() + t.expires_in * 1000;
   if (t.refresh_token) acct.refreshToken = encrypt(t.refresh_token, secret);
-  writeAccounts(readAccounts().map((a) => (a.id === acct.id ? acct : a)));
+  await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? acct : a)));
   return t.access_token;
 }
 
