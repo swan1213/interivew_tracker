@@ -2,7 +2,7 @@ import { useStore } from '@/store/store';
 import { isDarkTheme } from '@/store/selectors';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { useBootstrap, useEscapeKey, useUrlSync } from './hooks';
+import { useAutoSync, useBootstrap, useEscapeKey, useUrlSync } from './hooks';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { Dashboard } from '@/pages/Dashboard';
@@ -28,6 +28,7 @@ export function App() {
   useUrlSync();
   useEscapeKey();
   useBootstrap();
+  useAutoSync();
   const dark = isDarkTheme(themePref, sysDark);
 
   return (

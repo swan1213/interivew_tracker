@@ -26,7 +26,32 @@ export function useBootstrap(): void {
       s.refreshAll();
       return;
     }
-    void s.hydrate();
+    // Show what is stored right away, then fetch new mail in the background.
+    void s.hydrate().then(() => s.autoSync());
+  }, []);
+}
+
+const AUTO_SYNC_MS = 5 * 60_000;
+
+/** Keep mail fresh without the Sync button: every few minutes while the tab is visible, and on return to the tab. */
+export function useAutoSync(): void {
+  useEffect(() => {
+    if (provider.isDemo) return;
+    let last = Date.now();
+    const run = () => {
+      if (document.visibilityState !== 'visible') return;
+      last = Date.now();
+      void useStore.getState().autoSync();
+    };
+    const t = setInterval(run, AUTO_SYNC_MS);
+    const onVisible = () => {
+      if (Date.now() - last > AUTO_SYNC_MS / 2) run();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 }
 

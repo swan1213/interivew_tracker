@@ -72,7 +72,7 @@ export class RealGmail implements GmailApi {
     const out: { id: string; threadId: string }[] = [];
     let pageToken = '';
     while (out.length < max) {
-      const q = new URLSearchParams({ q: query, maxResults: String(Math.min(100, max - out.length)) });
+      const q = new URLSearchParams({ q: query, maxResults: String(Math.min(500, max - out.length)) });
       if (pageToken) q.set('pageToken', pageToken);
       const j = await this.call<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>('/messages?' + q.toString());
       out.push(...(j.messages || []));

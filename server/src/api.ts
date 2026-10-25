@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { cfg, tokenSecret } from './config';
 import { decrypt, encrypt } from './crypto';
 import { busyEvents, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
-import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot } from './derive';
+import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot, conversationGroups } from './derive';
 import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
@@ -202,19 +202,16 @@ export function createApi(): express.Express {
       const accts = (await readAccounts()).filter((a) => !accountId || a.id === accountId);
       let newMessages = 0;
       const errors: string[] = [];
-      for (const a of accts) {
-        try {
-          newMessages += (await syncAccount(a)).newMessages;
-        } catch (e) {
-          errors.push(a.email + ': ' + (e as Error).message);
-        }
-        if (!hasCalendar(a)) continue;
-        try {
-          await syncCalendar(a);
-        } catch (e) {
-          errors.push(a.email + ' calendar: ' + (e as Error).message);
-        }
-      }
+      // Every account, and each account's mail and calendar, sync side by side.
+      await Promise.all(
+        accts.flatMap((a) => [
+          syncAccount(a).then(
+            (r) => void (newMessages += r.newMessages),
+            (e: Error) => void errors.push(a.email + ': ' + e.message),
+          ),
+          hasCalendar(a) ? syncCalendar(a).catch((e: Error) => void errors.push(a.email + ' calendar: ' + e.message)) : Promise.resolve(),
+        ]),
+      );
       res.json({ newMessages, errors });
     }),
   );
@@ -234,8 +231,13 @@ export function createApi(): express.Express {
         const a = await acctOr404(res, acctId);
         if (!a) return;
         const { add, remove } = labels((req.body as { on?: boolean }) || {});
-        await gmailFor(a).modifyThread(threadId, add, remove);
-        await updateStoredLabels(a.id, threadId, add, remove);
+        // A conversation can span several Gmail threads (calendar notices for one event); label them all.
+        const mail = await readMail(a.id);
+        const group = conversationGroups(Object.values(mail.threads)).get(threadId);
+        for (const id of group ? group.map((t) => t.id) : [threadId]) {
+          await gmailFor(a).modifyThread(id, add, remove);
+          await updateStoredLabels(a.id, id, add, remove);
+        }
         res.json({ ok: true });
       }),
     );

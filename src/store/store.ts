@@ -154,6 +154,8 @@ export interface Actions {
   renameEvent: (evId: string, co: string) => void;
   shiftEvent: (evId: string, dir: -1 | 1) => void;
   refreshAll: () => void;
+  /** Quiet sync in the background: no skeletons, no toast unless new mail arrived, errors ignored. */
+  autoSync: () => Promise<void>;
   refreshAccount: (id: string) => void;
   addAccount: (kind: 'Gmail' | 'Outlook') => void;
   markAllNotifs: () => void;
@@ -250,6 +252,8 @@ function initialFields(): StateFields {
   };
 }
 
+let autoSyncing = false;
+
 export const useStore = create<AppState>()((set, get) => {
   const mapEmail = (id: string, fn: (e: Email) => Partial<Email>) =>
     set((s) => ({ emails: s.emails.map((e) => (e.id === id ? { ...e, ...fn(e) } : e)) }));
@@ -286,7 +290,8 @@ export const useStore = create<AppState>()((set, get) => {
     say: (msg) => showToast(msg),
     hydrate: async () => {
       if (provider.isDemo) return;
-      set({ loading: true });
+      // Placeholders only on the first load; later reloads swap the data in place.
+      if (!get().accts.length) set({ loading: true });
       try {
         const [snap, me] = await Promise.all([provider.load(), authApi.me().catch(() => null)]);
         set((s) => ({
@@ -598,6 +603,19 @@ export const useStore = create<AppState>()((set, get) => {
           set({ syncing: false });
           showToast('Sync failed: ' + err.message);
         });
+    },
+    autoSync: async () => {
+      if (provider.isDemo || get().syncing || autoSyncing) return;
+      autoSyncing = true;
+      try {
+        const r = await provider.sync();
+        await get().hydrate();
+        if (r.newMessages) showToast(r.newMessages + ' new message' + (r.newMessages === 1 ? '' : 's') + ' synced.');
+      } catch {
+        /* the Sync button reports problems; background syncs stay quiet */
+      } finally {
+        autoSyncing = false;
+      }
     },
     refreshAccount: (id) => {
       const a = get().accts.find((x) => x.id === id);

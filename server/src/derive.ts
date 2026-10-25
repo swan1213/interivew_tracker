@@ -151,6 +151,59 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
   };
 }
 
+// Google Calendar notices ("Invitation: …", "Updated invitation: …", "Canceled event: …") each arrive as a new
+// Gmail thread. They are folded into one conversation per event so an interview reads as a single thread.
+const CAL_PREFIX = /^(?:(?:updated |new )?invitation|canceled event|cancelled event|event canceled|accepted|declined|tentatively accepted|new event|updated event)(?: from an unknown sender)?(?: with note)?:\s*/i;
+
+/** The Google Calendar event id inside a notice's links (`eid` is base64url of "<event id> <calendar>"). */
+function calendarEventId(text: string): string {
+  const m = text.match(/[?&]eid=([A-Za-z0-9_-]+)/);
+  if (!m) return '';
+  try {
+    return Buffer.from(m[1], 'base64url').toString('utf8').split(' ')[0] || '';
+  } catch {
+    return '';
+  }
+}
+
+/** A key shared by every calendar notice about the same event, or '' for ordinary mail. */
+export function calendarKey(t: StoredThread): string {
+  const first = [...t.messages].sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (!first || first.isMine || !CAL_PREFIX.test(first.subject)) return '';
+  const eid = t.messages.map((m) => calendarEventId(m.bodyText)).find(Boolean);
+  if (eid) return 'eid:' + eid;
+  // No event link: the organizer plus the event title, without the date and time that change on updates.
+  const title = first.subject
+    .replace(CAL_PREFIX, '')
+    .replace(/\s+@\s+.*$/, '')
+    .replace(/\s*\([^()]*@[^()]*\)\s*$/, '')
+    .trim()
+    .toLowerCase();
+  return title ? 'subj:' + first.fromAddr.toLowerCase() + '|' + title : '';
+}
+
+const lastDate = (t: StoredThread): string => t.messages.reduce((d, m) => (m.date > d ? m.date : d), '');
+
+/** Threads grouped into conversations, keyed by the lead (latest) thread id. Most groups hold one thread. */
+export function conversationGroups(threads: StoredThread[]): Map<string, StoredThread[]> {
+  const byKey = new Map<string, StoredThread[]>();
+  const out = new Map<string, StoredThread[]>();
+  for (const t of threads) {
+    const k = calendarKey(t);
+    if (!k) out.set(t.id, [t]);
+    else (byKey.get(k) || byKey.set(k, []).get(k)!).push(t);
+  }
+  for (const group of byKey.values()) {
+    group.sort((a, b) => lastDate(b).localeCompare(lastDate(a)));
+    out.set(group[0].id, group);
+  }
+  return out;
+}
+
+/** One thread holding every message of a conversation, classified as its latest thread. */
+const mergeGroup = (group: StoredThread[]): StoredThread =>
+  group.length === 1 ? group[0] : { ...group[0], messages: group.flatMap((t) => t.messages) };
+
 export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, MailStore>, now: Date = new Date()): DataSnapshot {
   const colors = accountColors(accounts);
   const accts = accounts.map((a) => accountView(a, now, colors.get(a.id)));
@@ -159,7 +212,8 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
   for (const a of accounts) {
     const mail = mails[a.id];
     if (!mail) continue;
-    for (const t of Object.values(mail.threads)) {
+    for (const group of conversationGroups(Object.values(mail.threads)).values()) {
+      const t = mergeGroup(group);
       const e = threadToEmail(a, t, now);
       if (!e) continue;
       emails.push(e);

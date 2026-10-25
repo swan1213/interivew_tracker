@@ -20,13 +20,30 @@ async function pooled<T>(items: T[], width: number, fn: (x: T) => Promise<void>)
   await Promise.all(workers);
 }
 
+/** Conversations fetched from Gmail at once, and messages classified at once (model calls take seconds each). */
+const FETCH_WIDTH = 8;
+const CLASSIFY_WIDTH = 5;
+
+// One sync per account at a time: a second request (a click during an auto-sync) joins the running one.
+const running = new Map<string, Promise<{ newMessages: number }>>();
+// Accounts are synced in parallel; their lastSync writes to the shared accounts file are serialized.
+let accountsWrite: Promise<void> = Promise.resolve();
+
 /**
  * Pull recent mail for one account: every conversation with a new message is
  * fetched whole (sent and received, like Gmail shows it), parsed and classified;
  * known messages get their labels (read, starred, archived) refreshed so the UI
  * mirrors Gmail.
  */
-export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number }> {
+export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number }> {
+  const inFlight = running.get(acct.id);
+  if (inFlight) return inFlight;
+  const p = syncAccountNow(acct, api, now).finally(() => running.delete(acct.id));
+  running.set(acct.id, p);
+  return p;
+}
+
+async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<{ newMessages: number }> {
   const mail = await readMail(acct.id);
   const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
   const ids = listed.map((m) => m.id);
@@ -61,7 +78,7 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
   // Fetch each conversation with something new in full, so its earlier messages come
   // along even when they are older than the newest GMAIL_MAX_MESSAGES.
   const threadIds = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
-  await pooled(threadIds, 3, async (threadId) => {
+  await pooled(threadIds, FETCH_WIDTH, async (threadId) => {
     const msgs = (await api.getThread(threadId)).map((m) => parseMessage(m, acct.email));
     if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
       msgs.forEach((pm) => skipped.add(pm.id));
@@ -75,6 +92,7 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
     }
   });
 
+  const toClassify: StoredThread[] = [];
   for (const t of Object.values(mail.threads)) {
     t.messages.sort((a, b) => a.date.localeCompare(b.date));
     const head = [...t.messages].reverse().find((m) => !m.isMine);
@@ -86,16 +104,23 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
       t.classifiedId = latest.id;
       continue;
     }
-    if (t.classifiedId === head.id && t.classification) continue;
+    if (t.classifiedId !== head.id || !t.classification) toClassify.push(t);
+  }
+  await pooled(toClassify, CLASSIFY_WIDTH, async (t) => {
+    const head = [...t.messages].reverse().find((m) => !m.isMine)!;
     t.classification = await classifyMessage(head, t.messages, now);
     t.classifiedId = head.id;
-  }
+  });
 
   mail.skipped = Array.from(skipped).slice(-5000);
   mail.lastSync = now.toISOString();
   await writeMail(acct.id, mail);
   acct.lastSync = mail.lastSync;
-  await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
+  const write = accountsWrite.then(async () => {
+    await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
+  });
+  accountsWrite = write.catch(() => undefined);
+  await write;
   return { newMessages: added };
 }
 

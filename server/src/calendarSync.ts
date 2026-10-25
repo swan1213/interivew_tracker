@@ -31,6 +31,18 @@ export const readCalendar = async (): Promise<CalendarStore> => {
 };
 const writeCalendar = (c: CalendarStore): Promise<void> => writeJson(FILE, c);
 
+// Accounts sync in parallel; read-modify-write of the shared calendar file runs one at a time so none is lost.
+let calQueue: Promise<unknown> = Promise.resolve();
+function updateCalendar(fn: (c: CalendarStore) => void): Promise<void> {
+  const run = calQueue.then(async () => {
+    const c = await readCalendar();
+    fn(c);
+    await writeCalendar(c);
+  });
+  calQueue = run.catch(() => undefined);
+  return run;
+}
+
 /** All pulled busy blocks, for the snapshot. */
 export const busyEvents = (c: CalendarStore, accounts: StoredAccount[]): CalEvent[] => accounts.flatMap((a) => c.busy[a.id] || []);
 
@@ -142,9 +154,7 @@ export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calen
   const day = 86_400_000;
   const items = await api.listEvents(new Date(now.getTime() - PAST_DAYS * day).toISOString(), new Date(now.getTime() + AHEAD_DAYS * day).toISOString());
   const busy = items.map((g) => toBusy(acct, g)).filter((v): v is CalEvent => !!v);
-  const c = await readCalendar();
-  c.busy[acct.id] = busy;
-  await writeCalendar(c);
+  await updateCalendar((c) => void (c.busy[acct.id] = busy));
   return { busy: busy.length };
 }
 
@@ -177,9 +187,7 @@ export async function pushEvent(ev: CalEvent, accounts: StoredAccount[], apiFor:
     }
   }
   if (!gid) gid = (await api.insert(body)).id || '';
-  const fresh = await readCalendar();
-  fresh.links[ev.id] = { accountId: acct.id, gid };
-  await writeCalendar(fresh);
+  await updateCalendar((c) => void (c.links[ev.id] = { accountId: acct.id, gid }));
   return { gid, accountId: acct.id };
 }
 
