@@ -1,7 +1,16 @@
 import { cfg } from '../config';
 import type { Classification, ParsedMessage } from '../types';
 import { classifyWithClaude } from './claude';
-import { classifyHeuristic } from './heuristic';
+import { classifyHeuristic, firstSentences, isJobRelated } from './heuristic';
+
+/** A conversation you started that has no reply yet: listed under Sent, nothing to do. */
+export function classifySent(m: ParsedMessage): Classification {
+  return {
+    classifier: 'rules', jobRelated: isJobRelated(m), cat: 'sent', sec: '', pri: 'low', conf: 100,
+    company: '', role: '', recruiter: '', stage: '', action: '', deadline: '', deadlineKey: '9999',
+    needs: false, canReply: false, replyKind: '', summary: firstSentences(m.bodyText, 2, 220), facts: [], assumptions: [], times: [],
+  };
+}
 
 /**
  * Classify the latest inbound message of a thread.

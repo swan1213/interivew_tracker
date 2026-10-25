@@ -59,6 +59,7 @@ export function Sidebar() {
     nav('Offers', 'award', viewUnread(all, 'offers'), true, inb('offers'), view('offers')),
     nav('Rejections', 'xc', 0, false, inb('rejected'), view('rejected')),
     nav('Automated / No-Reply', 'bot', viewUnread(all, 'auto'), false, inb('auto'), view('auto')),
+    nav('Sent', 'send', 0, false, inb('sent'), view('sent')),
   ];
   const navTools: NavItem[] = [
     nav('Calendar', 'cal', 0, false, pg === 'cal' && st.calView !== 'agenda', () => st.go('cal', { calView: st.calView === 'agenda' ? 'week' : st.calView }), 'cal'),

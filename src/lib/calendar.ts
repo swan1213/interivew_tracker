@@ -21,3 +21,41 @@ export function conflictOf(v: CalEvent, active: CalEvent[]): CalEvent | null {
 export function conflictCount(active: CalEvent[]): number {
   return active.filter((x) => x.kind === 'interview' && conflictOf(x, active)).length;
 }
+
+export interface Lane {
+  /** Column this event sits in, from 0. */
+  lane: number;
+  /** Columns its overlapping group is split into. */
+  lanes: number;
+}
+
+/**
+ * Side-by-side columns for one day's events so overlapping ones don't hide each
+ * other. Events that overlap, directly or through a chain, form a group that
+ * shares the width; each takes the leftmost column that is free at its start.
+ * `minDur` is the shortest an event is drawn (hours), so short events that look
+ * overlapping on screen get columns too.
+ */
+export function layoutLanes(evs: CalEvent[], minDur = 0): Map<string, Lane> {
+  const out = new Map<string, Lane>();
+  const sorted = [...evs].sort((a, b) => a.start - b.start || b.end - a.end);
+  const endOf = (v: CalEvent) => Math.max(v.end, v.start + minDur);
+  let group: { id: string; lane: number }[] = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -Infinity;
+  const close = () => {
+    group.forEach((g) => out.set(g.id, { lane: g.lane, lanes: laneEnds.length }));
+    group = [];
+    laneEnds = [];
+  };
+  for (const v of sorted) {
+    if (v.start >= groupEnd) close();
+    let lane = laneEnds.findIndex((end) => end <= v.start);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = endOf(v);
+    group.push({ id: v.id, lane });
+    groupEnd = Math.max(groupEnd, endOf(v));
+  }
+  close();
+  return out;
+}

@@ -107,7 +107,7 @@ export function extractRecruiter(p: ParsedMessage, body: string, noReply: boolea
 const FIELD_LINE = /^(date|time|when|where|format|platform|location|interviewer|interviewers|duration|link|deadline|start here|join|dial-in|meeting id|passcode)\s*:/i;
 
 /** The first prose sentences of a message: greeting, field lines, bullets and URLs left out. */
-function firstSentences(body: string, n: number, cap: number): string {
+export function firstSentences(body: string, n: number, cap: number): string {
   const lines = body
     .split('\n')
     .map((l) => l.trim())

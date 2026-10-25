@@ -97,4 +97,23 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(ms.ivStatus).toBe('awaiting');
     expect(e1.messages).toHaveLength(1);
   });
+
+  it('keeps every received message and lists conversations you started under Sent', async () => {
+    const msg = (id: string, from: string, to: string, subject: string, body: string, labelIds: string[]) => ({
+      id, threadId: 't-' + id, labelIds, internalDate: String(NOW.getTime() - 3_600_000),
+      payload: {
+        mimeType: 'text/plain',
+        headers: [{ name: 'From', value: from }, { name: 'To', value: to }, { name: 'Subject', value: subject }, { name: 'Date', value: new Date(NOW.getTime() - 3_600_000).toUTCString() }],
+        body: { data: Buffer.from(body).toString('base64url'), size: body.length },
+      },
+    });
+    api.messages.set('news', msg('news', 'Weekly Digest <digest@news.example>', 'Jordan Lee <jordan.lee@gmail.example>', 'Your weekly digest', 'Top stories this week.', ['INBOX', 'UNREAD']));
+    api.messages.set('out', msg('out', 'Jordan Lee <jordan.lee@gmail.example>', 'Sam Park <sam@corp.example>', 'Coffee next week?', 'Hi Sam, are you free for coffee next week?', ['SENT']));
+    await sync.syncAccount(acct, api, NOW);
+    const snap = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: await store.readMail(acct.id) }, NOW);
+    expect(snap.emails.find((e) => e.subject === 'Your weekly digest')?.unread).toBe(true);
+    const out = snap.emails.find((e) => e.subject === 'Coffee next week?')!;
+    expect([out.cat, out.fromName, out.fromAddr, out.unread, out.needs, out.canReply]).toEqual(['sent', 'To: Sam Park', 'sam@corp.example', false, false, false]);
+    expect(out.thread.map((m) => m.mine)).toEqual([true]);
+  });
 });

@@ -127,7 +127,7 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
               st.accts.length === 0 && !provider.isDemo
                 ? 'Connect your Gmail in Connected Accounts to start syncing.'
                 : st.emails.length === 0 && !provider.isDemo
-                  ? 'Sync pulls the last 60 days of mail and keeps what looks job-related.'
+                  ? 'Sync pulls the last 60 days of sent and received mail.'
                   : 'Try clearing filters or searching a different company.'
             }
           >

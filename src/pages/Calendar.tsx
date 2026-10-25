@@ -3,7 +3,7 @@ import { drag, useStore } from '@/store/store';
 import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
 import type { Account, CalEvent, CalView } from '@/data/types';
-import { activeEvents, conflictCount, conflictOf } from '@/lib/calendar';
+import { activeEvents, conflictCount, conflictOf, layoutLanes, type Lane } from '@/lib/calendar';
 import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -177,6 +177,8 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
       {days.map((dt) => {
         const dow = dObj(dt).getUTCDay();
         const evs = active.filter((v) => v.date === dt);
+        // Events are drawn at least 22px tall, so lay them out by that height too.
+        const lanes = layoutLanes(evs, 22 / HOUR_PX);
         return (
           <div className="wkc" key={dt}>
             <div className={cx('wkhead', dt === st.today && 'today')}>
@@ -198,7 +200,7 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
                 title="Your interview availability"
               />
               {evs.map((v) => (
-                <EventBlock key={v.id} v={v} active={active} />
+                <EventBlock key={v.id} v={v} active={active} lane={lanes.get(v.id)} />
               ))}
             </div>
           </div>
@@ -208,18 +210,23 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
   );
 }
 
-function EventBlock({ v, active }: { v: CalEvent; active: CalEvent[] }) {
+function EventBlock({ v, active, lane }: { v: CalEvent; active: CalEvent[]; lane?: Lane }) {
   const st = useStore();
   const off = tzOffset(st.S.tz);
   const isIv = v.kind === 'interview';
   const c = isIv ? conflictOf(v, active) : null;
   const h = Math.max(22, (v.end - v.start) * HOUR_PX - 2);
   const sel = st.calSel === v.id;
+  const cols = lane?.lanes || 1;
+  // Overlapping events share the column width side by side.
+  const place: CSSProperties = cols > 1 ? { left: 'calc(' + ((lane!.lane / cols) * 100).toFixed(3) + '% + 2px)', width: 'calc(' + (100 / cols).toFixed(3) + '% - 4px)', right: 'auto' } : {};
+  const when = fmtT(v.start + off) + '–' + fmtT(v.end + off);
   return (
     <button
       type="button"
       className={cx('ev', STG[v.stage].cls, !isIv && 'busy', sel && 'sel3', c && 'cf')}
-      style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h, ...accent(acctOf(st.accts, v), sel) }}
+      style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h, ...place, ...accent(acctOf(st.accts, v), sel) }}
+      title={v.co + (v.role ? ' · ' + v.role : '') + '\n' + when + (v.platform ? '\n' + v.platform : '')}
       onClick={() => st.patch({ calSel: v.id })}
       draggable={isIv}
       onDragStart={(e) => {
@@ -233,7 +240,7 @@ function EventBlock({ v, active }: { v: CalEvent; active: CalEvent[] }) {
       aria-label={v.co + ', ' + v.role + ', ' + lab(v.date) + ' ' + fmtT(v.start + off)}
     >
       <b>{v.co}</b>
-      {h > 40 ? fmtT(v.start + off) + '–' + fmtT(v.end + off) : ''}
+      {h > 40 ? when : ''}
     </button>
   );
 }

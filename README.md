@@ -72,7 +72,7 @@ Out of the box the app runs on demo data. Real Gmail needs a Google OAuth client
 
 What happens next:
 
-- Sync pulls the last 60 days of mail (`GMAIL_SYNC_QUERY`), keeps only messages with a job-search signal (`GMAIL_JOB_FILTER`), and classifies each thread. Opening a message marks it read in Gmail; starring and archiving write back too.
+- Sync pulls the last 60 days of sent and received mail outside spam and trash (`GMAIL_SYNC_QUERY`, up to `GMAIL_MAX_MESSAGES`, default 300) and classifies each thread. Conversations you started that have no reply yet are listed under *Sent*. `GMAIL_JOB_FILTER=on` keeps only received mail with a job-search signal. Opening a message marks it read in Gmail; starring and archiving write back too.
 - Classification uses **keyword rules** by default. Set `ANTHROPIC_API_KEY` to have Claude read each recruiter email and fill in category, summary, stated facts vs. assumptions, meeting times and deadlines (model: `ANTHROPIC_MODEL`, default `claude-opus-5-5`).
 - Replies are sent through the Gmail API in the original thread, only when you click *Send now*.
 - *Disconnect* revokes the token and deletes the mail cached for that account.

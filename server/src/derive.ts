@@ -6,6 +6,7 @@
  */
 import type { Account, ActivityItem, Application, CalEvent, DataSnapshot, Email, EvStage, Notif, StageKey, ThreadMsg } from '../../src/data/types';
 import { hasCalendar } from './google/calendar';
+import { parseAddress } from './mime';
 import { agoMinutes, fmtT, lab, relLabel, timeLabel, whenLabel } from './time';
 import type { MailStore, StoredAccount, StoredThread } from './types';
 
@@ -80,11 +81,15 @@ export function accountView(a: StoredAccount, now: Date, color = a.color): Accou
 
 export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): Email | null {
   const msgs = [...t.messages].sort((a, b) => a.date.localeCompare(b.date));
-  const head = [...msgs].reverse().find((m) => !m.isMine);
   const cls = t.classification;
-  if (!head || !cls) return null;
   const latest = msgs[msgs.length - 1];
-  const replied = latest.isMine;
+  // The latest received message leads; a conversation you started with no reply yet is led by your latest message.
+  const sentOnly = cls?.cat === 'sent';
+  const head = sentOnly ? latest : [...msgs].reverse().find((m) => !m.isMine);
+  if (!head || !cls) return null;
+  const replied = !sentOnly && latest.isMine;
+  // Sent mail is listed by who it went to.
+  const to = sentOnly ? parseAddress(head.to.split(',')[0] || '') : null;
   const id = acct.id + ':' + t.id;
   const labels = head.labelIds;
   const thread: ThreadMsg[] = msgs.map((m, i) => ({
@@ -100,8 +105,8 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
   return {
     id,
     acct: acct.id,
-    fromName: head.fromName,
-    fromAddr: head.fromAddr,
+    fromName: to ? 'To: ' + (to.name || to.addr || 'no recipient') : head.fromName,
+    fromAddr: to ? to.addr : head.fromAddr,
     company: cls.company,
     role: cls.role,
     recruiter: cls.recruiter,
@@ -112,7 +117,7 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
     sec: cls.sec,
     pri: cls.pri,
     conf: cls.conf,
-    unread: labels.includes('UNREAD'),
+    unread: !sentOnly && labels.includes('UNREAD'),
     starred: msgs.some((m) => m.labelIds.includes('STARRED')),
     needs: cls.needs,
     ivStatus: cls.cat === 'confirmed' ? 'confirmed' : awaiting ? 'awaiting' : 'none',

@@ -2,7 +2,7 @@
 
 export type Cat =
   | 'action' | 'invite' | 'avail' | 'confirmed' | 'applied'
-  | 'status' | 'rejected' | 'auto' | 'offer' | 'review';
+  | 'status' | 'rejected' | 'auto' | 'offer' | 'review' | 'sent';
 export type Pri = 'critical' | 'high' | 'normal' | 'low';
 export type StageKey =
   | 'applied' | 'review' | 'screen' | 'sched' | 'confirmed'
@@ -26,7 +26,7 @@ export interface Member {
 }
 export type InboxView =
   | 'inbox' | 'action' | 'invite' | 'avail' | 'status'
-  | 'applied' | 'offers' | 'rejected' | 'auto';
+  | 'applied' | 'offers' | 'rejected' | 'auto' | 'sent';
 export type CalView = 'month' | 'week' | 'day' | 'agenda';
 export type SortKey = 'newest' | 'oldest' | 'priority' | 'deadline';
 export type CompMode = 'reply' | 'replyall' | 'forward';

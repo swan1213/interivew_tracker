@@ -1,4 +1,4 @@
-import { classifyMessage } from './classify';
+import { classifyMessage, classifySent } from './classify';
 import { isJobRelated } from './classify/heuristic';
 import { cfg } from './config';
 import { gmailFor, type GmailApi } from './google/gmail';
@@ -30,7 +30,8 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
   const ids = await api.listMessageIds(cfg.syncQuery, cfg.maxMessages);
   const known = new Map<string, StoredThread>();
   for (const t of Object.values(mail.threads)) for (const m of t.messages) known.set(m.id, t);
-  const skipped = new Set(mail.skipped);
+  // With the job filter off, mail it skipped earlier is fetched now.
+  const skipped = new Set(cfg.jobFilter ? mail.skipped : []);
   let added = 0;
 
   // Refresh read/starred/archived on known messages with three searches rather than
@@ -76,7 +77,14 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
   for (const t of Object.values(mail.threads)) {
     t.messages.sort((a, b) => a.date.localeCompare(b.date));
     const head = [...t.messages].reverse().find((m) => !m.isMine);
-    if (!head) continue;
+    if (!head) {
+      // Only your own messages so far: shown under Sent until someone replies.
+      const latest = t.messages[t.messages.length - 1];
+      if (t.classifiedId === latest.id && t.classification) continue;
+      t.classification = classifySent(latest);
+      t.classifiedId = latest.id;
+      continue;
+    }
     if (t.classifiedId === head.id && t.classification) continue;
     t.classification = await classifyMessage(head, t.messages, now);
     t.classifiedId = head.id;

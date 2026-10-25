@@ -60,14 +60,14 @@ export const cfg = {
     return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
   },
   get syncQuery(): string {
-    return process.env.GMAIL_SYNC_QUERY || 'newer_than:60d -in:spam -in:trash -category:promotions -category:social';
+    return process.env.GMAIL_SYNC_QUERY || 'newer_than:60d -in:spam -in:trash';
   },
-  /** Drop mail with no job-search signal at all (GMAIL_JOB_FILTER=off keeps everything). */
+  /** Every sent and received message is kept; GMAIL_JOB_FILTER=on drops received mail with no job-search signal. */
   get jobFilter(): boolean {
-    return process.env.GMAIL_JOB_FILTER !== 'off';
+    return process.env.GMAIL_JOB_FILTER === 'on';
   },
   get maxMessages(): number {
-    return parseInt(process.env.GMAIL_MAX_MESSAGES || '150', 10);
+    return parseInt(process.env.GMAIL_MAX_MESSAGES || '300', 10);
   },
   /**
    * Workspace owners: always admin, cannot be demoted or removed.

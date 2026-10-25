@@ -17,6 +17,7 @@ export function inView(e: Email, view: InboxView): boolean {
     case 'offers': return c === 'offer';
     case 'rejected': return c === 'rejected';
     case 'auto': return c === 'auto' || e.sec === 'auto';
+    case 'sent': return c === 'sent';
     default: return true;
   }
 }

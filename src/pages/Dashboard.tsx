@@ -115,7 +115,7 @@ export function Dashboard() {
             <Icon name="plug" sm />
             Get started
           </span>
-          <p>{st.loading ? 'Loading your workspace…' : 'No email account is connected yet. Connect your Gmail and InterviewFlow will sync the last 60 days of mail, keep what looks job-related, and sort it into the views on the left.'}</p>
+          <p>{st.loading ? 'Loading your workspace…' : 'No email account is connected yet. Connect your Gmail and InterviewFlow will sync the last 60 days of sent and received mail and sort it into the views on the left.'}</p>
           <div className="ln wrap">
             <button type="button" className="btn pri" onClick={() => st.patch({ addAcctOpen: true })}>
               <Icon name="plus" sm />
