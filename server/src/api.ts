@@ -8,7 +8,6 @@ import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
 import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest } from './google/oauth';
-import { parseAddress } from './mime';
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
@@ -245,30 +244,6 @@ export function createApi(): express.Express {
   labelRoute('read', () => ({ add: [], remove: ['UNREAD'] }));
   labelRoute('star', (b) => (b.on ? { add: ['STARRED'], remove: [] } : { add: [], remove: ['STARRED'] }));
   labelRoute('archive', () => ({ add: [], remove: ['INBOX'] }));
-
-  // A new conversation, not a reply: sent from one connected account to any address.
-  app.post(
-    '/mail/send',
-    requireRole('member'),
-    wrap(async (req, res) => {
-      const body = (req.body || {}) as { accountId?: string; to?: string; subject?: string; body?: string };
-      const a = await acctOr404(res, body.accountId || '');
-      if (!a) return;
-      const to = (body.to || '').split(/[,;]/).map((x) => x.trim()).filter(Boolean);
-      const bad = to.find((x) => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(parseAddress(x).addr));
-      if (!to.length || bad) {
-        res.status(400).json({ error: bad ? 'Not an email address: ' + bad : 'Add at least one recipient.' });
-        return;
-      }
-      const text = (body.body || '').trim();
-      if (!text) {
-        res.status(400).json({ error: 'The message is empty.' });
-        return;
-      }
-      const raw = buildRawReply({ fromName: a.name, fromAddr: a.email, to: to.join(', '), subject: (body.subject || '').trim() || '(no subject)', body: text });
-      res.json(await gmailFor(a).send(raw));
-    }),
-  );
 
   app.post(
     '/mail/:id/send',

@@ -208,17 +208,7 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .comp .cr{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--bd);font-size:12.5px;flex-wrap:wrap}
 .comp .cto{flex:1;min-width:180px;border:0;outline:0;background:transparent;font-size:12.5px;font-weight:550;color:var(--tx);padding:4px 0}
 .comp .cr span.k{color:var(--tx3);width:44px;flex:none}
-.newmsg{position:absolute;right:24px;bottom:0;width:min(540px,calc(100% - 32px));max-height:calc(100% - 72px);display:flex;flex-direction:column;background:var(--sf);border:1px solid var(--bd);border-bottom:0;border-radius:12px 12px 0 0;box-shadow:var(--sh);z-index:70}
-.newmsg .nmh{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 14px;background:var(--sf2);border-radius:12px 12px 0 0;font-size:13px}
-.newmsg .nmh b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.newmsg .nmr{display:flex;align-items:center;gap:8px;padding:4px 14px;border-bottom:1px solid var(--bd);min-height:38px;font-size:13px}
-.newmsg .nmr .k{color:var(--tx3);width:52px;flex:none}
-.newmsg .nmr input{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:13px;color:var(--tx);padding:6px 0}
-.newmsg .nmr .sel{flex:1;min-width:0}
-.newmsg textarea{flex:1;min-height:220px;border:0;outline:0;resize:none;padding:12px 14px;background:transparent;font-size:13.5px;line-height:1.6;color:var(--tx)}
-.newmsg .nmf{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--bd)}
-@media (max-width:640px){.newmsg{right:8px;width:calc(100% - 16px)}}
-.aid{border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+@media (max-width:640px){.aid{border:1px solid var(--bd);border-radius:12px;background:var(--sf);padding:12px 14px;display:flex;flex-direction:column;gap:10px}
 .aid .draft{white-space:pre-line;font-size:13px;line-height:1.6;padding:10px 12px;background:var(--bg);border-radius:9px;border:1px solid var(--bd)}
 .tones{display:flex;gap:5px;flex-wrap:wrap}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:48px 24px;color:var(--tx3);flex:1}

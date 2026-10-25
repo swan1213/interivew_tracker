@@ -36,10 +36,6 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
         <h1>
           {title} <span className="cnt">{rows.length}</span>
           <span className="sp" />
-          <button type="button" className="btn pri sm" onClick={() => st.openNew()}>
-            <Icon name="plus" sm />
-            Compose
-          </button>
           {st.peer && (
             <button type="button" className="btn ghost sm" onClick={() => st.showPeer('')} aria-label="Show everyone's mail">
               <Icon name="x" sm />

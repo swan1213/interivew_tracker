@@ -217,7 +217,7 @@ export interface OutgoingMessage {
   to: string;
   subject: string;
   body: string;
-  /** Id of the conversation being answered; absent for a new message. */
+  /** Id of the conversation being answered. */
   inReplyTo?: string;
   mode?: CompMode;
 }

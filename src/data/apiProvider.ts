@@ -66,7 +66,7 @@ export class ApiMailProvider implements MailProvider {
   }
 
   async send(msg: OutgoingMessage): Promise<{ id: string }> {
-    if (!msg.inReplyTo) return call<{ id: string }>('/api/mail/send', 'POST', { accountId: msg.accountId, to: msg.to, subject: msg.subject, body: msg.body });
+    if (!msg.inReplyTo) throw new Error('Nothing to reply to.');
     return call<{ id: string }>('/api/mail/' + enc(msg.inReplyTo) + '/send', 'POST', { accountId: msg.accountId, body: msg.body, mode: msg.mode, to: msg.to });
   }
 

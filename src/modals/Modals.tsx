@@ -18,7 +18,6 @@ export function Modals() {
       {st.schedOpen && <ScheduleModal />}
       {st.addCalOpen && <AddCalModal />}
       {st.sendOpen && <SendModal />}
-      {st.newOpen && <NewMessage />}
       {st.cfOpen && <ConfirmModal />}
       {st.addAcctOpen && <AddAccountModal />}
     </>
@@ -277,68 +276,3 @@ function AddAccountModal() {
   );
 }
 
-/** A new email, not a reply: a floating window in the corner like a mail client's compose box. */
-function NewMessage() {
-  const st = useStore();
-  const from = st.accts.find((a) => a.id === st.newFrom);
-  // Suggest your other connected accounts first, then everyone you have mail with.
-  const others = st.accts.filter((a) => a.id !== st.newFrom).map((a) => a.addr);
-  const people = Array.from(new Set(st.emails.flatMap((e) => e.peers || []))).filter((x) => !others.includes(x) && x !== from?.addr).sort();
-  const onKey = (ev: React.KeyboardEvent) => {
-    if (ev.key === 'Enter' && (ev.ctrlKey || ev.metaKey)) st.sendNew();
-  };
-  return (
-    <section className="newmsg" aria-label="New message" onKeyDown={onKey}>
-      <div className="nmh">
-        <b>{st.newSubject.trim() || 'New message'}</b>
-        <button type="button" className="ib" onClick={st.closeNew} aria-label="Discard new message">
-          <Icon name="x" sm />
-        </button>
-      </div>
-      <label className="nmr">
-        <span className="k">From</span>
-        <select className="sel" value={st.newFrom} onChange={(ev) => st.patch({ newFrom: ev.target.value })} aria-label="Send from account">
-          {st.accts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.sendAs ? a.sendAs + ' <' + a.addr + '>' : a.addr}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="nmr">
-        <span className="k">To</span>
-        <input
-          type="text"
-          list="nm-people"
-          value={st.newTo}
-          onChange={(ev) => st.patch({ newTo: ev.target.value })}
-          placeholder="name@example.com, separate several with commas"
-          autoFocus
-          aria-label="Recipients"
-        />
-        <datalist id="nm-people">
-          {others.concat(people).map((x) => (
-            <option key={x} value={x} />
-          ))}
-        </datalist>
-      </label>
-      <label className="nmr">
-        <span className="k">Subject</span>
-        <input type="text" value={st.newSubject} onChange={(ev) => st.patch({ newSubject: ev.target.value })} aria-label="Subject" />
-      </label>
-      <textarea value={st.newBody} onChange={(ev) => st.patch({ newBody: ev.target.value })} aria-label="Message body" placeholder="Write your message" />
-      <div className="nmf">
-        <button type="button" className="btn pri" onClick={st.sendNew} disabled={st.newSending}>
-          <Icon name="send" sm />
-          {st.newSending ? 'Sending…' : 'Send'}
-        </button>
-        <span className="mut" style={{ flex: 1 }}>
-          {provider.isDemo ? 'Demo: nothing is delivered.' : 'Ctrl+Enter to send'}
-        </span>
-        <button type="button" className="btn ghost sm" onClick={st.closeNew}>
-          Discard
-        </button>
-      </div>
-    </section>
-  );
-}

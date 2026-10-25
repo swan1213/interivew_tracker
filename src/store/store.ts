@@ -70,13 +70,6 @@ export interface StateFields extends Data {
   compTo: string;
   compText: string;
   sendOpen: boolean;
-  // new message (not a reply)
-  newOpen: boolean;
-  newFrom: string;
-  newTo: string;
-  newSubject: string;
-  newBody: string;
-  newSending: boolean;
   // dialogs
   schedOpen: boolean;
   schedMode: SchedMode;
@@ -142,9 +135,6 @@ export interface Actions {
   askSend: () => void;
   closeSend: () => void;
   confirmSend: () => void;
-  openNew: (to?: string) => void;
-  closeNew: () => void;
-  sendNew: () => void;
   openSched: (mode: SchedMode) => void;
   closeSched: () => void;
   toggleSlot: (key: string) => void;
@@ -252,7 +242,6 @@ function initialFields(): StateFields {
     sortKey: 'newest', unreadOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
     tone: prefs.tone ?? 'professional', variant: 0, mods: NO_MODS, aiDraft: '', chosen: [],
     compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compTo: '', compText: '', sendOpen: false,
-    newOpen: false, newFrom: '', newTo: '', newSubject: '', newBody: '', newSending: false,
     schedOpen: false, schedMode: 'avail', schedSel: [], addCalOpen: false, addCalEv: '', cfOpen: false, cf: NO_CF, addAcctOpen: false,
     toast: '', notifOpen: false, acMenuOpen: false, syncing: false,
     calView: route.calView ?? 'week', calDate: clock.today, calSel: '',
@@ -457,35 +446,6 @@ export const useStore = create<AppState>()((set, get) => {
       });
       addAct('You replied to ' + (co || e.fromName), 'cat-confirmed');
       showToast(toast);
-    },
-
-    openNew: (to = '') => {
-      const s = get();
-      // Write from the account being viewed, else the last one used for a reply.
-      const from = s.acctFilter !== 'all' ? s.acctFilter : s.newFrom || s.compFrom || s.accts[0]?.id || '';
-      set({ newOpen: true, newFrom: from, newTo: to || (s.newOpen ? s.newTo : ''), ...(s.newOpen ? {} : { newSubject: '', newBody: '' }) });
-    },
-    closeNew: () => set({ newOpen: false, newTo: '', newSubject: '', newBody: '', newSending: false }),
-    sendNew: () => {
-      const s = get();
-      const ac = s.accts.find((a) => a.id === s.newFrom);
-      if (!ac) return showToast('Pick the account to send from.');
-      if (!s.newTo.trim()) return showToast('Add a recipient.');
-      if (!s.newBody.trim()) return showToast('Write a message first.');
-      set({ newSending: true });
-      provider
-        .send({ accountId: ac.id, from: ac.addr, to: s.newTo, subject: s.newSubject, body: s.newBody })
-        .then(() => {
-          get().closeNew();
-          addAct('You emailed ' + s.newTo, 'cat-sent');
-          showToast('Sent from ' + ac.addr + ' to ' + s.newTo + '.' + (provider.isDemo ? ' Demo only, nothing was delivered.' : ''));
-          // Pull the sent message (and, for a connected recipient, the delivered copy) into the inbox.
-          if (!provider.isDemo) void get().autoSync();
-        })
-        .catch((err: Error) => {
-          set({ newSending: false });
-          showToast('Sending failed: ' + err.message);
-        });
     },
 
     // ---- scheduling dialog ----
