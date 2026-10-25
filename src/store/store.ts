@@ -225,6 +225,8 @@ function initialFields(): StateFields {
   const prefs = loadJSON<Partial<Prefs>>(PREFS_KEY) || {};
   const route = typeof window !== 'undefined' ? parsePath(window.location.pathname) : { page: 'dash' as Page };
   const S = { ...DEFAULT_SETTINGS, ...savedSettings(prefs.S) };
+  // Signed in, the demo's sample name gives way to yours: it signs reply drafts.
+  if (runtime.user && (!S.name.trim() || S.name === DEFAULT_SETTINGS.name)) S.name = runtime.user.name || runtime.user.email.split('@')[0];
   // Signed in: the server says who you are and what role you have. Demo: the locally saved team.
   const members = runtime.user ? [toMember(runtime.user)] : restoreMembers(prefs.members, S.name, provider.isDemo);
   const meId = runtime.user ? runtime.user.email : restoreMeId(prefs.meId, members);

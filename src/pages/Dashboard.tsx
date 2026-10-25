@@ -5,7 +5,7 @@ import { DFULL, MN, PRI_RANK, STAGES, STG, type IconName } from '@/data/constant
 import type { CalEvent, Email } from '@/data/types';
 import { effCat, inView, needsAction } from '@/lib/mail';
 import { currentMember } from '@/lib/roles';
-import { activeEvents, busyAt } from '@/lib/calendar';
+import { activeEvents, busyAt, looksLikeInterview } from '@/lib/calendar';
 import { dObj, fmtT, lab, minutesLabel, rel, tzOffset } from '@/lib/time';
 import { cx, firstName, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -16,15 +16,12 @@ interface Kpi { label: string; icon: IconName; n: number; hot?: boolean; go: () 
 /** Mail that counts toward the job-search numbers (not your own sent mail, automated or unrelated mail). */
 const isRecruitment = (e: Email): boolean => !['auto', 'other', 'sent'].includes(effCat(e));
 
-/** Events on your Google Calendar whose title says they are an interview. */
-const INTERVIEW_TITLE = /\b(interview|screen(ing)?|recruiter|hiring manager|onsite|on-site|technical|panel|final round)\b/i;
-
 /** One row of Upcoming interviews: a scheduled event, or an interview confirmed by email whose time wasn't stated. */
 export interface UpcomingItem { id: string; ev?: CalEvent; email?: Email }
 
 export function upcomingInterviews(events: CalEvent[], all: Email[], today: string): UpcomingItem[] {
   const evs = events
-    .filter((v) => v.date >= today && (v.kind === 'interview' ? v.added || !!v.emailId : INTERVIEW_TITLE.test(v.co)))
+    .filter((v) => v.date >= today && (v.kind === 'interview' ? v.added || !!v.emailId : looksLikeInterview(v.co)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const withEvent = new Set(evs.map((v) => v.emailId).filter(Boolean));
   const untimed = all.filter((e) => effCat(e) === 'confirmed' && !e.evId && !withEvent.has(e.id) && !e.done);

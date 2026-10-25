@@ -1,5 +1,8 @@
 import type { CalEvent } from '@/data/types';
 
+/** A Google Calendar event whose title says it is an interview. */
+export const looksLikeInterview = (title: string): boolean => /\b(interview|screen(ing)?|recruiter|hiring manager|onsite|on-site|technical|panel|final round)\b/i.test(title);
+
 /** Events that are actually on the user's calendar. */
 export const activeEvents = (evs: CalEvent[]): CalEvent[] => evs.filter((v) => v.added);
 

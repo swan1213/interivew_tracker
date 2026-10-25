@@ -1,119 +1,93 @@
 import { useStore } from '@/store/store';
-import { getAcct, visibleAll } from '@/store/selectors';
+import { getAcct } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { STAGES } from '@/data/constants';
-import type { Cat } from '@/data/types';
-import { effCat, needsAction } from '@/lib/mail';
+import type { CalEvent } from '@/data/types';
+import { effCat } from '@/lib/mail';
+import { looksLikeInterview } from '@/lib/calendar';
+import { BUCKETS, byCompany, funnel, isRecruitment, pct, toRec, weekly, type Rec } from '@/lib/analytics';
 import { daysBetween } from '@/lib/time';
 import { AcDot, Empty, RowBar } from '@/ui/bits';
 
-interface Rec { acct: string; cat: Cat; d: number; needs: boolean }
-
-/**
- * Fictional eight-week history mixed with the live inbox so the tables have
- * enough volume to read. A real provider replaces this with stored mail.
- */
-function demoHistory(acctIds: string[]): Rec[] {
-  const cyc: Cat[] = [
-    ...Array<Cat>(8).fill('applied'), ...Array<Cat>(5).fill('status'), ...Array<Cat>(4).fill('rejected'),
-    ...Array<Cat>(2).fill('action'), ...Array<Cat>(2).fill('avail'), ...Array<Cat>(2).fill('invite'),
-    ...Array<Cat>(3).fill('confirmed'), 'auto', 'offer',
-  ];
-  const out: Rec[] = [];
-  for (let i = 0; i < 150 && acctIds.length; i++) {
-    out.push({ acct: acctIds[(i * 7 + Math.floor(i / 3)) % acctIds.length], cat: cyc[(i * 5 + Math.floor(i / 4)) % cyc.length], d: 4 + ((i * 37) % 570) / 10, needs: false });
-  }
-  return out;
-}
-
-const WEEKS: [string, number, number][] = [
-  ['Sep 7', 14, 1], ['Sep 14', 22, 2], ['Sep 21', 31, 3], ['Sep 28', 27, 2],
-  ['Oct 5', 38, 4], ['Oct 12', 35, 3], ['Oct 19', 46, 5], ['Oct 26', 12, 3],
-];
-const BY_COMPANY: [string, number][] = [
-  ['Microsoft', 4], ['Amazon', 3], ['Stripe', 3], ['Datadog', 2], ['Shopify', 2], ['Atlassian', 2], ['Coinbase', 2], ['Vercel', 1],
-];
-const BY_ACCOUNT_N: Record<string, number> = { g1: 74, o1: 58, w1: 41 };
-
 export function Analytics() {
   const st = useStore();
-  const all = visibleAll(st.emails, st.accts);
   const days = st.anRange === 'all' ? 99999 : parseInt(st.anRange, 10);
-  const rec: Rec[] = st.emails
-    .filter((e) => st.accts.some((a) => a.id === e.acct))
-    .map((e) => ({ acct: e.acct, cat: effCat(e), d: e.ago / 1440, needs: needsAction(e) }));
-  if (provider.isDemo) rec.push(...demoHistory(st.accts.map((a) => a.id)));
+  const inAcct = (id: string) => st.anAcct === 'all' || id === st.anAcct;
+  const connected = st.accts.filter((a) => inAcct(a.id));
+  const recs: Rec[] = st.emails.filter((e) => connected.some((a) => a.id === e.acct)).map(toRec);
+  const inRange = recs.filter((r) => r.d <= days);
 
-  const evAcct = (v: { emailId?: string; co: string }) => {
+  const evAcct = (v: CalEvent) => {
+    if (v.acct) return v.acct;
     const em = v.emailId ? st.emails.find((e) => e.id === v.emailId) : undefined;
     if (em) return em.acct;
-    const ap = st.apps.find((a) => a.co === v.co);
-    return ap ? ap.acct : '';
+    return st.apps.find((a) => a.co === v.co)?.acct || '';
   };
-  // Calendar interviews not already represented by a "confirmed" email.
+  // Interviews on the calendar in the range (before or after today) not already counted as a "confirmed" email:
+  // ones you added, and Google Calendar events titled like an interview.
   const evRows = st.events
-    .filter((v) => v.kind === 'interview' && v.added && daysBetween(st.today, v.date) <= days)
+    .filter((v) => v.added && Math.abs(daysBetween(st.today, v.date)) <= days && (v.kind === 'interview' || looksLikeInterview(v.co)))
     .filter((v) => {
       const em = v.emailId ? st.emails.find((e) => e.id === v.emailId) : undefined;
       return !(em && effCat(em) === 'confirmed');
     });
 
-  const accRows = st.accts
-    .filter((a) => st.anAcct === 'all' || a.id === st.anAcct)
-    .map((a) => {
-      const rs = rec.filter((r) => r.acct === a.id && r.d <= days);
-      const c = (f: (r: Rec) => boolean) => rs.filter(f).length;
-      const sched = c((r) => r.cat === 'confirmed') + evRows.filter((v) => evAcct(v) === a.id).length;
-      return {
-        id: a.id, label: a.label, addr: a.addr, color: a.color, initial: a.initial,
-        n: rs.length,
-        act: c((r) => r.cat === 'action' || r.needs),
-        inv: c((r) => r.cat === 'avail' || r.cat === 'invite'),
-        conf: c((r) => r.cat === 'confirmed'),
-        app: c((r) => r.cat === 'applied' || r.cat === 'status'),
-        rej: c((r) => r.cat === 'rejected'),
-        off: c((r) => r.cat === 'offer'),
-        auto: c((r) => r.cat === 'auto' || r.cat === 'review'),
-        sched,
-      };
-    });
+  const accRows = connected.map((a) => {
+    const rs = inRange.filter((r) => r.acct === a.id);
+    const c = (f: (r: Rec) => boolean) => rs.filter(f).length;
+    const conf = c((r) => r.cat === 'confirmed');
+    return {
+      id: a.id, label: a.label, addr: a.addr, color: a.color, initial: a.initial,
+      n: rs.length,
+      act: c((r) => r.needs),
+      inv: c((r) => r.cat === 'avail' || r.cat === 'invite'),
+      conf,
+      app: c((r) => r.cat === 'applied' || r.cat === 'status'),
+      rej: c((r) => r.cat === 'rejected'),
+      off: c((r) => r.cat === 'offer'),
+      sched: conf + evRows.filter((v) => evAcct(v) === a.id).length,
+      recruiting: c((r) => isRecruitment(r.cat)),
+    };
+  });
   type Row = (typeof accRows)[number];
-  type NumKey = 'n' | 'act' | 'inv' | 'conf' | 'app' | 'rej' | 'off' | 'auto' | 'sched';
-  const sum = (k: NumKey) => accRows.reduce((s, r) => s + r[k], 0);
+  type NumKey = 'n' | 'act' | 'inv' | 'conf' | 'app' | 'rej' | 'off' | 'sched';
+  const sum = (k: NumKey | 'recruiting') => accRows.reduce((s, r) => s + r[k], 0);
   const mxS = Math.max(1, ...accRows.map((r) => r.sched));
-  const tN = sum('n') || 1;
-  const mix: [string, NumKey, string][] = [
-    ['Action needed', 'act', '#C0540C'], ['Invites & availability', 'inv', '#7E3FD6'], ['Interview confirmed', 'conf', '#1E8A4C'],
-    ['Applications & updates', 'app', '#0B7AB0'], ['Rejected', 'rej', '#B4486A'], ['Offers', 'off', '#0F8F83'], ['Automated / other', 'auto', '#6B7390'],
-  ];
+  const mix = BUCKETS.map((b) => ({ ...b, n: inRange.filter((r) => b.cats.includes(r.cat)).length }));
+  const tN = inRange.length || 1;
   const rangeLabel = st.anRange === 'all' ? 'All time' : 'Last ' + st.anRange + ' days';
 
-  const counts = STAGES.map((s) => ({ label: s.l, color: s.c, n: st.apps.filter((a) => a.stage === s.k).length }));
+  const apps = st.apps.filter((a) => inAcct(a.acct));
+  const counts = STAGES.map((s) => ({ label: s.l, color: s.c, n: apps.filter((a) => a.stage === s.k).length }));
   const total = counts.reduce((s, c) => s + c.n, 0) || 1;
   let acc = 0;
   const donut =
     'conic-gradient(' +
-    counts
+    (counts
       .filter((c) => c.n)
       .map((c) => {
         const a0 = (acc / total) * 360;
         acc += c.n;
         return c.color + ' ' + a0 + 'deg ' + (acc / total) * 360 + 'deg';
       })
-      .join(',') +
+      .join(',') || 'var(--bd) 0deg 360deg') +
     ')';
 
-  const byAccount = st.accts.map((a) => ({ name: a.label, color: a.color, initial: a.initial, n: BY_ACCOUNT_N[a.id] || 12 }));
-  const mxA = Math.max(1, ...byAccount.map((b) => b.n));
-  const offers = all.filter((e) => effCat(e) === 'offer').length;
+  const f = funnel(inRange);
   const tiles = [
-    { label: 'Applications submitted', n: '212', tip: 'Demo data' },
-    { label: 'Interview invitations', n: '19', tip: 'Demo data' },
-    { label: 'Interview conversion', n: '9.0%', tip: '19 invitations / 212 applications (demo)' },
-    { label: 'Response rate', n: '31%', tip: 'Demo data' },
-    { label: 'Rejection rate', n: '22%', tip: 'Demo data' },
-    { label: 'Offers received', n: String(offers), tip: 'Computed from your inbox' },
+    { label: 'Applications', n: String(f.applications), tip: 'Companies you have recruitment mail with in this range' },
+    { label: 'Reached an interview', n: String(f.interviewed), tip: 'Companies that invited you, asked for your availability or confirmed an interview' },
+    { label: 'Interview conversion', n: pct(f.interviewed, f.applications, 1), tip: f.interviewed + ' of ' + f.applications + ' companies reached an interview' },
+    { label: 'Response rate', n: pct(f.responded, f.applications), tip: f.responded + ' of ' + f.applications + ' companies wrote back beyond an application receipt' },
+    { label: 'Rejection rate', n: pct(f.rejected, f.applications), tip: f.rejected + ' of ' + f.applications + ' companies sent a rejection' },
+    { label: 'Offers received', n: String(f.offers), tip: 'Companies that sent an offer' },
   ];
+
+  const weeks = weekly(recs, st.today);
+  const mxW = Math.max(1, ...weeks.map((w) => w.emails));
+  const companies = byCompany(inRange);
+  const mxC = Math.max(1, ...companies.map(([, n]) => n));
+  const mxA = Math.max(1, ...accRows.map((r) => r.recruiting));
 
   const Num = ({ v, bold }: { v: number; bold?: boolean }) => <span className="num">{bold ? <b>{v}</b> : v}</span>;
   const rowCells = (r: Pick<Row, NumKey>) => (
@@ -128,16 +102,16 @@ export function Analytics() {
       <Num v={r.sched} bold />
     </>
   );
-  const totals = { n: sum('n'), act: sum('act'), inv: sum('inv'), conf: sum('conf'), app: sum('app'), rej: sum('rej'), off: sum('off'), auto: sum('auto'), sched: sum('sched') };
+  const totals = { n: sum('n'), act: sum('act'), inv: sum('inv'), conf: sum('conf'), app: sum('app'), rej: sum('rej'), off: sum('off'), sched: sum('sched') };
+  const scope = rangeLabel + ' · ' + (st.anAcct === 'all' ? 'every connected account' : getAcct(st.accts, st.anAcct).addr);
 
   return (
     <div className="scroll">
       <div className="ph">
         <div>
           <h1>Analytics</h1>
-          <p>{provider.isDemo ? 'Clearly labeled demonstration data. Not real performance.' : 'Computed from your synced mail and calendar.'}</p>
+          <p>{provider.isDemo ? 'Computed from the fictional demo inbox.' : 'Computed from your synced mail and calendar.'}</p>
         </div>
-        {provider.isDemo && <span className="tag">Demo data · last 8 weeks</span>}
       </div>
 
       <section className="card" style={{ marginBottom: 14 }} aria-label="Email status by account">
@@ -162,8 +136,7 @@ export function Analytics() {
         </div>
         <div className="cb" style={{ overflowX: 'auto' }}>
           <div className="mut" style={{ marginBottom: 8 }}>
-            {rangeLabel} · {st.anAcct === 'all' ? 'every connected account' : getAcct(st.accts, st.anAcct).addr}
-            {provider.isDemo ? ' · includes fictional demo history' : ''}
+            {scope}. Action needed counts emails still waiting on you, whatever their category.
           </div>
           <div className="gr hd">
             <span>Account</span>
@@ -203,8 +176,8 @@ export function Analytics() {
             <span className="hint">{rangeLabel}</span>
           </div>
           <div className="cb">
-            {mix.map(([label, k, color]) => (
-              <RowBar key={k} name={label} n={sum(k)} pct={Math.round((sum(k) / tN) * 100)} color={color} title={sum(k) + ' emails'} />
+            {mix.map((b) => (
+              <RowBar key={b.k} name={b.l} n={b.n} pct={Math.round((b.n / tN) * 100)} color={b.color} title={b.n + ' of ' + inRange.length + ' emails'} />
             ))}
           </div>
         </section>
@@ -227,7 +200,7 @@ export function Analytics() {
               />
             ))}
             <div className="mut" style={{ marginTop: 8 }}>
-              Counts confirmed-interview emails plus calendar interviews not already covered by one.{provider.isDemo ? ' Demo history is fictional.' : ''}
+              Counts confirmed-interview emails plus interviews on your calendar not already covered by one.
             </div>
           </div>
         </section>
@@ -241,17 +214,21 @@ export function Analytics() {
           </div>
         ))}
       </div>
+      <div className="mut" style={{ margin: '-6px 0 14px' }}>
+        Per company, {rangeLabel.toLowerCase()}: each company you have recruitment mail with counts as one application.
+      </div>
 
       <div className="dgrid">
         <section className="card">
           <div className="ch">
             <h2>Weekly recruitment activity</h2>
+            <span className="hint">Last 8 weeks</span>
           </div>
           <div className="cb">
             <div className="lg">
               <span>
                 <span className="cdot" style={{ background: 'var(--ac)' }} />
-                Recruiter emails
+                Recruitment emails
               </span>
               <span>
                 <span className="cdot" style={{ background: 'var(--ok)' }} />
@@ -259,13 +236,13 @@ export function Analytics() {
               </span>
             </div>
             <div className="cols">
-              {WEEKS.map(([label, a, b]) => (
-                <div className="colg" key={label} title={'Week of ' + label + ': ' + a + ' recruiter emails, ' + b + ' interview invites (demo)'}>
+              {weeks.map((w) => (
+                <div className="colg" key={w.label} title={'Week of ' + w.label + ': ' + w.emails + ' recruitment emails, ' + w.invites + ' interview invites'}>
                   <div className="pair">
-                    <i style={{ height: Math.round((a / 50) * 100) + '%', background: 'var(--ac)' }} />
-                    <i style={{ height: Math.round((b / 50) * 100) + 6 + '%', background: 'var(--ok)' }} />
+                    <i style={{ height: Math.round((w.emails / mxW) * 100) + '%', background: 'var(--ac)' }} />
+                    <i style={{ height: Math.round((w.invites / mxW) * 100) + '%', background: 'var(--ok)' }} />
                   </div>
-                  <span>{label}</span>
+                  <span>{w.label}</span>
                 </div>
               ))}
             </div>
@@ -274,6 +251,7 @@ export function Analytics() {
         <section className="card">
           <div className="ch">
             <h2>Applications by status</h2>
+            <span className="hint">{apps.length} in the tracker</span>
           </div>
           <div className="cb" style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
             <div className="donut" style={{ background: donut }} role="img" aria-label="Applications by status donut" />
@@ -292,22 +270,24 @@ export function Analytics() {
         </section>
         <section className="card">
           <div className="ch">
-            <h2>Applications by company</h2>
-            <span className="hint">demo counts</span>
+            <h2>Recruitment mail by company</h2>
+            <span className="hint">{rangeLabel}</span>
           </div>
           <div className="cb">
-            {BY_COMPANY.map(([name, n]) => (
-              <RowBar key={name} name={name} n={n} pct={Math.round((n / 4) * 100)} title={n + ' applications'} />
+            {companies.map(([name, n]) => (
+              <RowBar key={name} name={name} n={n} pct={Math.round((n / mxC) * 100)} title={n + ' recruitment emails'} />
             ))}
+            {companies.length === 0 && <Empty title="No recruitment mail in this range" style={{ padding: 20 }} />}
           </div>
         </section>
         <section className="card">
           <div className="ch">
-            <h2>Email activity by account</h2>
+            <h2>Recruitment mail by account</h2>
+            <span className="hint">{rangeLabel}</span>
           </div>
           <div className="cb">
-            {byAccount.map((b) => (
-              <RowBar key={b.name} name={b.name} n={b.n} pct={Math.round((b.n / mxA) * 100)} color={b.color} nameWidth={120} title={b.n + ' recruitment emails'} lead={<AcDot color={b.color} initial={b.initial} size={18} />} />
+            {accRows.map((r) => (
+              <RowBar key={r.id} name={r.label} n={r.recruiting} pct={Math.round((r.recruiting / mxA) * 100)} color={r.color} nameWidth={120} title={r.recruiting + ' recruitment emails'} lead={<AcDot color={r.color} initial={r.initial} size={18} />} />
             ))}
           </div>
         </section>
