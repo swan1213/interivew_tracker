@@ -1,0 +1,94 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+/** Repository root (two levels up from server/src). */
+export const ROOT = resolve(here, '..', '..');
+
+/**
+ * Minimal .env loader: KEY=value lines, optional quotes. A value set in the real
+ * shell environment always wins; values this loader set earlier are refreshed, so
+ * editing .env while the dev server is running (Vite restarts in-process) takes effect.
+ */
+const loadedKeys: Set<string> = ((globalThis as unknown as { __iflowEnvKeys?: Set<string> }).__iflowEnvKeys ||= new Set<string>());
+export function loadEnvFile(file = resolve(ROOT, '.env')): void {
+  if (!existsSync(file)) return;
+  for (const raw of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 0) continue;
+    const key = line.slice(0, eq).trim();
+    let val = line.slice(eq + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) val = val.slice(1, -1);
+    if (!process.env[key] || loadedKeys.has(key)) {
+      process.env[key] = val;
+      loadedKeys.add(key);
+    }
+  }
+}
+loadEnvFile();
+
+/** Runtime configuration, read lazily so tests and mock mode can set env first. */
+export const cfg = {
+  get dataDir(): string {
+    return process.env.IFLOW_DATA_DIR || resolve(ROOT, 'server', 'data');
+  },
+  /** GOOGLE_MOCK=1 replaces Google with an in-process fake (dev and tests). */
+  get mock(): boolean {
+    return process.env.GOOGLE_MOCK === '1';
+  },
+  get clientId(): string {
+    return process.env.GOOGLE_CLIENT_ID || '';
+  },
+  get clientSecret(): string {
+    return process.env.GOOGLE_CLIENT_SECRET || '';
+  },
+  get appUrl(): string {
+    return (process.env.APP_URL || 'http://localhost:5173').replace(/\/$/, '');
+  },
+  get redirectUri(): string {
+    return cfg.appUrl + '/api/auth/google/callback';
+  },
+  get anthropicKey(): string {
+    return process.env.ANTHROPIC_API_KEY || '';
+  },
+  get anthropicModel(): string {
+    return process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
+  },
+  get syncQuery(): string {
+    return process.env.GMAIL_SYNC_QUERY || 'newer_than:60d -in:spam -in:trash -category:promotions -category:social';
+  },
+  /** Drop mail with no job-search signal at all (GMAIL_JOB_FILTER=off keeps everything). */
+  get jobFilter(): boolean {
+    return process.env.GMAIL_JOB_FILTER !== 'off';
+  },
+  get maxMessages(): number {
+    return parseInt(process.env.GMAIL_MAX_MESSAGES || '150', 10);
+  },
+  /**
+   * Workspace owners: always admin, cannot be demoted or removed.
+   * ADMIN_EMAIL takes one address or a comma-separated list.
+   */
+  get adminEmails(): string[] {
+    return (process.env.ADMIN_EMAIL || 'winterhot223@gmail.com')
+      .split(',')
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+  },
+  /** True when Google sign-in can actually run. */
+  get configured(): boolean {
+    return cfg.mock || (!!cfg.clientId && !!cfg.clientSecret);
+  },
+};
+
+/** Secret used to encrypt tokens at rest. Generated once and kept outside git when not provided. */
+export function tokenSecret(): string {
+  if (process.env.TOKEN_SECRET) return process.env.TOKEN_SECRET;
+  mkdirSync(cfg.dataDir, { recursive: true });
+  const f = resolve(cfg.dataDir, 'secret.key');
+  if (!existsSync(f)) writeFileSync(f, randomBytes(32).toString('hex'), { mode: 0o600 });
+  return readFileSync(f, 'utf8').trim();
+}

@@ -1,0 +1,100 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+// Point the server at a scratch data directory with the fake Google before loading modules.
+process.env.IFLOW_DATA_DIR = mkdtempSync(join(tmpdir(), 'iflow-test-'));
+process.env.GOOGLE_MOCK = '1';
+delete process.env.ANTHROPIC_API_KEY;
+
+const NOW = new Date('2026-10-26T09:12:00');
+
+describe('sync → classify → derive with the mock Gmail', () => {
+  let sync: typeof import('./sync');
+  let derive: typeof import('./derive');
+  let store: typeof import('./store');
+  let mock: typeof import('./google/mock');
+  let api: import('./google/mock').MockGmail;
+  const acct = {
+    id: 'g-test', email: 'jordan.lee@gmail.example', name: 'Jordan Lee', provider: 'Gmail' as const, color: '#3F6FD8', initial: 'G',
+    refreshToken: 'x', accessToken: 'x', expiresAt: Date.now() + 3600_000, lastSync: null, scopes: [],
+  };
+
+  beforeAll(async () => {
+    sync = await import('./sync');
+    derive = await import('./derive');
+    store = await import('./store');
+    mock = await import('./google/mock');
+    store.writeAccounts([acct]);
+    api = new mock.MockGmail();
+    // Rebuild the fixture on the test clock so dates match the demo text.
+    api.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => api.messages.set(m.id, m));
+  });
+
+  it('first sync stores and classifies every job-related thread', async () => {
+    const r = await sync.syncAccount(acct, api, NOW);
+    expect(r.newMessages).toBe(13); // 12 threads, one with an earlier message
+    const mail = store.readMail(acct.id);
+    expect(Object.keys(mail.threads)).toHaveLength(12);
+    expect(Object.values(mail.threads).every((t) => t.classification)).toBe(true);
+    expect(mail.threads['t-e7'].messages).toHaveLength(2);
+  });
+
+  it('a second sync adds nothing and keeps classifications', async () => {
+    const r = await sync.syncAccount(acct, api, NOW);
+    expect(r.newMessages).toBe(0);
+  });
+
+  it('derives emails, applications, events, notifications and activity', () => {
+    const accts = store.readAccounts();
+    const snap = derive.buildSnapshot(accts, { [acct.id]: store.readMail(acct.id) }, NOW);
+    expect(snap.accts[0]).toMatchObject({ id: 'g-test', addr: 'jordan.lee@gmail.example', provider: 'Gmail' });
+    expect(snap.emails).toHaveLength(12);
+    const amazon = snap.emails.find((e) => e.company === 'Amazon')!;
+    expect(amazon.cat).toBe('confirmed');
+    expect(amazon.unread).toBe(true);
+    expect(amazon.starred).toBe(true);
+    expect(amazon.evId).toBe('ev-' + amazon.id);
+    expect(amazon.thread).toHaveLength(1);
+    expect(amazon.time).toBe('7:37 AM');
+    const atl = snap.emails.find((e) => e.company === 'Atlassian')!;
+    expect(atl.thread).toHaveLength(2);
+    expect(atl.opts).toHaveLength(3);
+
+    const ev = snap.events.find((v) => v.id === amazon.evId)!;
+    expect(ev).toMatchObject({ co: 'Amazon', date: '2026-10-27', start: 11, end: 12, added: false, stage: 'tech', platform: 'Amazon Chime' });
+    expect(snap.events.some((v) => v.co === 'Northwind Cloud' && v.stage === 'offer')).toBe(true);
+
+    const apps = snap.apps;
+    expect(apps.find((a) => a.co === 'Microsoft')?.stage).toBe('sched');
+    expect(apps.find((a) => a.co === 'Amazon')?.stage).toBe('confirmed');
+    expect(apps.find((a) => a.co === 'Coinbase')?.stage).toBe('closed');
+    expect(apps.find((a) => a.co === 'Northwind Cloud')?.stage).toBe('offer');
+    expect(apps.find((a) => a.co === 'Stripe')?.stage).toBe('applied');
+    expect(apps.some((a) => a.co === 'JobBoard')).toBe(false);
+
+    expect(snap.notifs.length).toBeGreaterThanOrEqual(5);
+    expect(snap.notifs.find((n) => n.emailId === amazon.id)?.title).toBe('Interview confirmed');
+    expect(snap.activity[0].text).toBe('Microsoft asked for your availability');
+  });
+
+  it('label changes and a sent reply are reflected after the next sync', async () => {
+    const mail = store.readMail(acct.id);
+    const e1 = mail.threads['t-e1'];
+    await api.modifyThread('t-e1', [], ['UNREAD']);
+    api.now = () => NOW.getTime() + 60_000;
+    await api.send(Buffer.from('From: Jordan <jordan.lee@gmail.example>\r\nSubject: Re: test\r\nContent-Type: text/plain\r\n\r\nThese times work.').toString('base64url'), 't-e1');
+    await sync.syncAccount(acct, api, NOW);
+    const snap = derive.buildSnapshot(store.readAccounts(), { [acct.id]: store.readMail(acct.id) }, NOW);
+    const ms = snap.emails.find((e) => e.company === 'Microsoft')!;
+    expect(ms.unread).toBe(false);
+    expect(ms.thread).toHaveLength(2);
+    expect(ms.thread[1].mine).toBe(true);
+    expect(ms.replied).toBe(true);
+    expect(ms.done).toBe(true);
+    expect(ms.ivStatus).toBe('awaiting');
+    expect(e1.messages).toHaveLength(1);
+  });
+});

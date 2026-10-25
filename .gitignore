@@ -1,0 +1,14 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+coverage
+.DS_Store
+Thumbs.db
+server/data/
+server/data-mock/
+client_secret*.json
+*.apps.googleusercontent.com.json
