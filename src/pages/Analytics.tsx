@@ -7,6 +7,7 @@ import { effCat } from '@/lib/mail';
 import { looksLikeInterview } from '@/lib/calendar';
 import { BUCKETS, byCompany, funnel, isRecruitment, pct, toRec, weekly, type Rec } from '@/lib/analytics';
 import { daysBetween } from '@/lib/time';
+import { cx } from '@/lib/util';
 import { AcDot, Empty, RowBar } from '@/ui/bits';
 
 export function Analytics() {
@@ -89,19 +90,22 @@ export function Analytics() {
   const mxC = Math.max(1, ...companies.map(([, n]) => n));
   const mxA = Math.max(1, ...accRows.map((r) => r.recruiting));
 
-  const Num = ({ v, bold }: { v: number; bold?: boolean }) => <span className="num">{bold ? <b>{v}</b> : v}</span>;
-  const rowCells = (r: Pick<Row, NumKey>) => (
-    <>
-      <Num v={r.n} />
-      <Num v={r.act} />
-      <Num v={r.inv} />
-      <Num v={r.conf} />
-      <Num v={r.app} />
-      <Num v={r.rej} />
-      <Num v={r.off} />
-      <Num v={r.sched} bold />
-    </>
-  );
+  const COLS: { k: NumKey; l: string; color?: string }[] = [
+    { k: 'n', l: 'Emails' },
+    { k: 'act', l: 'Action needed', color: BUCKETS[0].color },
+    { k: 'inv', l: 'Invites & availability', color: BUCKETS[1].color },
+    { k: 'conf', l: 'Interview confirmed', color: BUCKETS[2].color },
+    { k: 'app', l: 'Applications & updates', color: BUCKETS[3].color },
+    { k: 'rej', l: 'Rejected', color: BUCKETS[4].color },
+    { k: 'off', l: 'Offers', color: BUCKETS[5].color },
+    { k: 'sched', l: 'Interviews scheduled' },
+  ];
+  const rowCells = (r: Pick<Row, NumKey>) =>
+    COLS.map((col) => (
+      <td key={col.k} className={cx('num', r[col.k] === 0 && 'zero', col.k === 'sched' && 'key')}>
+        {r[col.k]}
+      </td>
+    ));
   const totals = { n: sum('n'), act: sum('act'), inv: sum('inv'), conf: sum('conf'), app: sum('app'), rej: sum('rej'), off: sum('off'), sched: sum('sched') };
   const scope = rangeLabel + ' · ' + (st.anAcct === 'all' ? 'every connected account' : getAcct(st.accts, st.anAcct).addr);
 
@@ -134,36 +138,48 @@ export function Analytics() {
             </select>
           </div>
         </div>
-        <div className="cb" style={{ overflowX: 'auto' }}>
+        <div className="cb">
           <div className="mut" style={{ marginBottom: 8 }}>
             {scope}. Action needed counts emails still waiting on you, whatever their category.
           </div>
-          <div className="gr hd">
-            <span>Account</span>
-            <span className="num">Emails</span>
-            <span className="num">Action needed</span>
-            <span className="num">Invites &amp; availability</span>
-            <span className="num">Interview confirmed</span>
-            <span className="num">Applications &amp; updates</span>
-            <span className="num">Rejected</span>
-            <span className="num">Offers</span>
-            <span className="num">Interviews scheduled</span>
-          </div>
-          {accRows.map((r) => (
-            <div className="gr" key={r.id}>
-              <span className="ln">
-                <AcDot color={r.color} initial={r.initial} />
-                <span style={{ minWidth: 0 }}>
-                  <b style={{ fontWeight: 600, display: 'block' }}>{r.label}</b>
-                  <span className="mut">{r.addr}</span>
-                </span>
-              </span>
-              {rowCells(r)}
-            </div>
-          ))}
-          <div className="gr tot">
-            <span>{st.anAcct === 'all' ? 'All accounts' : 'Selected account'}</span>
-            {rowCells(totals)}
+          <div className="atw">
+            <table className="atab">
+              <thead>
+                <tr>
+                  <th scope="col">Account</th>
+                  {COLS.map((col) => (
+                    <th scope="col" key={col.k} className={cx('num', col.k === 'sched' && 'key')}>
+                      <span className="th">
+                        {col.color && <span className="cdot" style={{ background: col.color }} />}
+                        {col.l}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {accRows.map((r) => (
+                  <tr key={r.id}>
+                    <th scope="row">
+                      <span className="ln">
+                        <AcDot color={r.color} initial={r.initial} size={26} />
+                        <span style={{ minWidth: 0 }}>
+                          <b>{r.label}</b>
+                          <span className="mut">{r.addr}</span>
+                        </span>
+                      </span>
+                    </th>
+                    {rowCells(r)}
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th scope="row">{st.anAcct === 'all' ? 'All accounts' : 'Selected account'}</th>
+                  {rowCells(totals)}
+                </tr>
+              </tfoot>
+            </table>
           </div>
           {totals.n === 0 && <Empty title="No emails in this range" text="Try a longer date range." style={{ padding: 20 }} />}
         </div>

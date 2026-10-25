@@ -178,9 +178,30 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .act{display:flex;gap:10px;align-items:center;padding:10px 14px;border-radius:11px;background:var(--warnb);color:var(--tx);border:1px solid color-mix(in srgb,var(--warn) 30%,transparent);flex-wrap:wrap}
 .act b{font-weight:650}
 .act .sp{flex:1;min-width:160px}
-.msg{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:14px 16px}
-.msg .mh{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-.msg p{margin:0 0 9px;font-size:13.5px;line-height:1.6;white-space:pre-line}
+.thread{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+.tm{display:flex;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bd)}
+.tm.fold{padding-top:11px;padding-bottom:11px;cursor:pointer}
+.tm.fold:hover{background:var(--sf2)}
+.tav{width:40px;height:40px;border-radius:99px;flex:none;display:grid;place-items:center;color:#fff;font-weight:600;font-size:16px}
+.tm.fold .tav{width:32px;height:32px;font-size:13px;margin:0 4px}
+.tmb{flex:1;min-width:0}
+.tmh{display:flex;align-items:baseline;gap:12px;width:100%;text-align:left;padding:0;background:none;border:0;color:inherit;cursor:pointer}
+.tmh:disabled{cursor:default}
+.tmh .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.tmh .who b{font-weight:650}
+.tmh .addr{color:var(--tx3);font-size:12px;margin-left:6px}
+.tmh .when{flex:none;font-size:12px;color:var(--tx3)}
+.tm .to{font-size:12px;color:var(--tx3);margin-top:1px;display:flex;gap:10px;align-items:center}
+.tm .lnk{background:none;border:0;padding:0;color:var(--ac);font-size:12px;cursor:pointer}
+.tm .lnk:hover{text-decoration:underline}
+.tbody{margin-top:14px;font-size:14px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere;color:var(--tx)}
+.tatt{margin-top:12px}
+.snip{font-size:13px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.tmore{display:block;width:100%;padding:8px 20px;text-align:left;font-size:12.5px;color:var(--ac);background:var(--sf2);border:0;border-bottom:1px solid var(--bd);cursor:pointer}
+.tact{display:flex;gap:10px;flex-wrap:wrap;padding:16px 20px 18px 72px}
+.pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 20px;border-radius:99px;border:1px solid var(--tx3);background:var(--sf);color:var(--tx2);font-weight:550;font-size:13px;cursor:pointer}
+.pill:hover{background:var(--sf2);color:var(--tx)}
+@media (max-width:640px){.tm{padding:14px}.tact{padding-left:14px}}
 .att{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border:1px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);margin-right:6px}
 .comp{background:var(--sf);border:1px solid var(--ac);border-radius:12px;overflow:hidden;box-shadow:0 0 0 3px var(--acs)}
 .comp textarea{width:100%;min-height:170px;border:0;outline:0;padding:12px 14px;resize:vertical;background:transparent;line-height:1.6;font-size:13.5px}
@@ -328,10 +349,27 @@ textarea.inp{height:auto;padding:8px 9px;resize:vertical;min-height:70px;line-he
 .wrap{flex-wrap:wrap}
 .hide{display:none}
 .act.okn{background:var(--okb);border-color:transparent}
-.gr{display:grid;grid-template-columns:minmax(170px,1.7fr) repeat(8,minmax(64px,1fr));gap:8px;align-items:center;padding:9px 0;border-top:1px solid var(--bd);min-width:760px;font-variant-numeric:tabular-nums}
-.gr.hd{border-top:0;font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);padding-top:2px}
-.gr.tot{font-weight:650;background:var(--sf2);border-radius:8px;padding-left:8px;padding-right:8px}
-.gr .num{text-align:right}
+.atw{overflow-x:auto;border:1px solid var(--bd);border-radius:10px}
+.atab{width:100%;min-width:880px;border-collapse:separate;border-spacing:0;font-variant-numeric:tabular-nums;font-size:13px}
+.atab th,.atab td{padding:10px 14px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:middle;font-weight:450}
+.atab thead th{background:var(--sf2);font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);line-height:1.35;vertical-align:bottom;white-space:normal}
+.atab thead .th{display:inline-flex;align-items:flex-start;gap:6px;max-width:112px;text-align:right}
+.atab thead .th .cdot{margin-top:3px;flex:none}
+.atab tbody th,.atab tfoot th{width:24%;min-width:220px}
+.atab tbody th{font-weight:450}
+.atab tbody th b{display:block;font-weight:600;font-size:13px}
+.atab tbody th .mut{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.atab tbody tr:hover>*{background:var(--sf2)}
+.atab .num{text-align:right;white-space:nowrap}
+.atab td.zero{color:var(--tx3);opacity:.55}
+.atab .key{background:var(--acs);color:var(--acx);font-weight:650}
+.atab thead .key{background:color-mix(in srgb,var(--acs) 70%,var(--sf2))}
+.atab tbody tr:hover>.key{background:color-mix(in srgb,var(--acs) 80%,var(--sf2))}
+.atab tfoot th,.atab tfoot td{background:var(--sf2);font-weight:650;border-bottom:0}
+.atab tfoot .key{background:color-mix(in srgb,var(--acs) 70%,var(--sf2))}
+.atab tfoot td.zero{opacity:.7}
+.atab th:first-child,.atab td:first-child{position:sticky;left:0;z-index:1;background:var(--sf)}
+.atab thead th:first-child,.atab tfoot th:first-child,.atab tbody tr:hover>th:first-child{background:var(--sf2)}
 .stagebox{display:flex;gap:6px;flex-wrap:wrap}
 
 /* ---- app shell additions (not part of the design canvas) ---- */

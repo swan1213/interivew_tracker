@@ -1,4 +1,4 @@
-import type { ChangeEvent } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { useStore, type AppState, type StateFields } from '@/store/store';
 import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
@@ -434,37 +434,7 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
           )}
         </section>
 
-        {e.thread.map((m, i) => (
-          <article className="msg" key={i}>
-            <div className="mh">
-              <span className="avatar" style={{ background: m.mine ? 'var(--acb)' : colorFor(m.from), color: '#fff' }}>
-                {m.from.trim().charAt(0).toUpperCase()}
-              </span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <b style={{ fontWeight: 600 }}>{m.from}</b>{' '}
-                {m.mine ? (
-                  <span className="mut">&lt;{m.addr}&gt;</span>
-                ) : (
-                  <button type="button" className="mut" style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', textDecoration: 'underline dotted' }} onClick={() => st.showPeer(m.addr)} title={'All mail with ' + m.addr}>
-                    &lt;{m.addr}&gt;
-                  </button>
-                )}
-                <div className="mut">{m.when}</div>
-              </div>
-            </div>
-            <p>{m.body}</p>
-            {!!m.atts?.length && (
-              <div>
-                {m.atts.map((at) => (
-                  <span className="att" key={at.name}>
-                    <Icon name="clip" sm />
-                    {at.name} <span className="mut">{at.size}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-          </article>
-        ))}
+        <Thread key={e.id} e={e} />
 
         {e.canReply && <ReplyAssistant e={e} />}
         {st.compOpen && <Composer e={e} />}
@@ -477,6 +447,95 @@ import { stageLabel } from '@/data/constants';
 import { colorOf } from '@/lib/util';
 const stageName = (_st: AppState, k: Parameters<typeof stageLabel>[0]) => stageLabel(k);
 const colorFor = (name: string) => colorOf(name);
+
+/** The conversation laid out like a mail client: one card, a row per message, older ones folded. */
+function Thread({ e }: { e: Email }) {
+  const st = useStore();
+  const n = e.thread.length;
+  const [open, setOpen] = useState<Set<number>>(() => new Set(n <= 2 ? e.thread.map((_, i) => i) : [n - 1]));
+  const toggle = (i: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  const other = e.thread.find((m) => !m.mine)?.from || e.fromName;
+  const folded = n > 2 ? e.thread.slice(0, -1).filter((_, i) => !open.has(i)).length : 0;
+
+  return (
+    <section className="thread" aria-label="Conversation">
+      {e.thread.map((m, i) => {
+        const isOpen = open.has(i);
+        const color = m.mine ? 'var(--acb)' : colorFor(m.from);
+        return (
+          <article className={cx('tm', !isOpen && 'fold')} key={i} onClick={isOpen ? undefined : () => toggle(i)}>
+            <span className="tav" style={{ background: color }} aria-hidden="true">
+              {m.from.trim().charAt(0).toUpperCase()}
+            </span>
+            <div className="tmb">
+              <button type="button" className="tmh" onClick={(ev) => { ev.stopPropagation(); toggle(i); }} aria-expanded={isOpen} disabled={i === n - 1}>
+                <span className="who">
+                  <b>{m.from}</b>
+                  {isOpen && <span className="addr">&lt;{m.addr}&gt;</span>}
+                </span>
+                <span className="when">{m.when}</span>
+              </button>
+              {isOpen ? (
+                <>
+                  <div className="to">
+                    to {m.mine ? other : 'me'}
+                    {!m.mine && st.peer !== m.addr.toLowerCase() && (
+                      <button type="button" className="lnk" onClick={() => st.showPeer(m.addr)} title={'All mail with ' + m.addr}>
+                        All mail with {m.from.split(' ')[0]}
+                      </button>
+                    )}
+                  </div>
+                  <div className="tbody">{m.body}</div>
+                  {!!m.atts?.length && (
+                    <div className="tatt">
+                      {m.atts.map((at) => (
+                        <span className="att" key={at.name}>
+                          <Icon name="clip" sm />
+                          {at.name} <span className="mut">{at.size}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="snip">{m.body.replace(/\s+/g, ' ')}</div>
+              )}
+            </div>
+          </article>
+        );
+      })}
+      {folded > 1 && (
+        <button type="button" className="tmore" onClick={() => setOpen(new Set(e.thread.map((_, i) => i)))}>
+          Expand all {n} messages
+        </button>
+      )}
+      {!st.compOpen && (
+        <div className="tact">
+          <button type="button" className="pill" onClick={() => st.openComp('reply')}>
+            <Icon name="reply" sm />
+            Reply
+          </button>
+          {e.peers && e.peers.length > 1 && (
+            <button type="button" className="pill" onClick={() => st.openComp('replyall')}>
+              <Icon name="reply" sm />
+              Reply all
+            </button>
+          )}
+          <button type="button" className="pill" onClick={() => st.openComp('forward')}>
+            <Icon name="fwd" sm />
+            Forward
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
 
 function ReplyAssistant({ e }: { e: Email }) {
   const st = useStore();
