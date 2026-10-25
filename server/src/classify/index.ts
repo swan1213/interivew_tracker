@@ -12,6 +12,15 @@ export function classifySent(m: ParsedMessage): Classification {
   };
 }
 
+/** Mail with no job-search signal (newsletters, personal mail): listed under Other mail, never an action or application. */
+export function classifyOther(rules: Classification): Classification {
+  return {
+    ...rules, cat: 'other', sec: '', pri: 'low', conf: 100, company: '', role: '', recruiter: '', stage: '', action: '', deadline: '', deadlineKey: '9999',
+    needs: false, canReply: false, replyKind: '', mode: undefined, need: undefined, slotLen: undefined, windowDates: undefined, opts: undefined,
+    facts: [], assumptions: [], times: [], platform: undefined, link: undefined, interviewer: undefined, event: undefined,
+  };
+}
+
 /**
  * Classify the latest inbound message of a thread.
  * Rules always run first; when an Anthropic key is configured the model refines the
@@ -19,6 +28,8 @@ export function classifySent(m: ParsedMessage): Classification {
  */
 export async function classifyMessage(head: ParsedMessage, thread: ParsedMessage[], now: Date = new Date()): Promise<Classification> {
   const rules = classifyHeuristic(head, now);
+  // Phrases like "please confirm" or "when are you free" also appear in ordinary mail; only job mail gets job categories.
+  if (!rules.jobRelated && !thread.some((m) => isJobRelated(m))) return classifyOther(rules);
   if (!cfg.anthropicKey || cfg.mock) return rules;
   try {
     return await classifyWithClaude(head, thread, rules, now);

@@ -20,7 +20,8 @@ describe('inbox filtering', () => {
 
   it('smart views match primary or secondary categories', () => {
     expect(ids(filterEmails(data.emails, { ...base, view: 'action' }, data.apps)).sort()).toEqual(['e1', 'e10', 'e2', 'e4', 'e7', 'e8', 'e9']);
-    expect(ids(filterEmails(data.emails, { ...base, view: 'avail' }, data.apps)).sort()).toEqual(['e1', 'e10', 'e7']);
+    // e7 is a reschedule request: an action, not a request for availability.
+    expect(ids(filterEmails(data.emails, { ...base, view: 'avail' }, data.apps)).sort()).toEqual(['e1', 'e10']);
     expect(ids(filterEmails(data.emails, { ...base, view: 'auto' }, data.apps)).sort()).toEqual(['e11', 'e3', 'e8']);
     expect(ids(filterEmails(data.emails, { ...base, view: 'offers' }, data.apps))).toEqual(['e9']);
   });

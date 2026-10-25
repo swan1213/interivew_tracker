@@ -111,7 +111,9 @@ describe('sync → classify → derive with the mock Gmail', () => {
     api.messages.set('out', msg('out', 'Jordan Lee <jordan.lee@gmail.example>', 'Sam Park <sam@corp.example>', 'Coffee next week?', 'Hi Sam, are you free for coffee next week?', ['SENT']));
     await sync.syncAccount(acct, api, NOW);
     const snap = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: await store.readMail(acct.id) }, NOW);
-    expect(snap.emails.find((e) => e.subject === 'Your weekly digest')?.unread).toBe(true);
+    const digest = snap.emails.find((e) => e.subject === 'Your weekly digest')!;
+    expect([digest.unread, digest.cat, digest.needs]).toEqual([true, 'other', false]);
+    expect(snap.apps.some((a) => a.emailId === digest.id)).toBe(false);
     const out = snap.emails.find((e) => e.subject === 'Coffee next week?')!;
     expect([out.cat, out.fromName, out.fromAddr, out.unread, out.needs, out.canReply]).toEqual(['sent', 'To: Sam Park', 'sam@corp.example', false, false, false]);
     expect(out.thread.map((m) => m.mine)).toEqual([true]);

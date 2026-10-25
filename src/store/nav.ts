@@ -1,6 +1,6 @@
 import type { CalView, InboxView, Page } from '@/data/types';
 
-const VIEWS: InboxView[] = ['inbox', 'action', 'invite', 'avail', 'status', 'applied', 'offers', 'rejected', 'auto', 'sent'];
+const VIEWS: InboxView[] = ['inbox', 'action', 'invite', 'avail', 'status', 'applied', 'offers', 'rejected', 'auto', 'sent', 'other'];
 const CAL_VIEWS: CalView[] = ['month', 'week', 'day', 'agenda'];
 
 export interface Route {

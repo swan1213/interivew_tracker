@@ -50,6 +50,16 @@ describe('merging a server snapshot with local workflow state', () => {
     expect(out.accts).toEqual(server.accts);
   });
 
+  it('drops applications and events left over from a mailbox that is no longer connected', () => {
+    const local = buildDemoData();
+    local.apps = [...local.apps, { ...local.apps[0], id: 'app-gone', co: 'Gone Co', acct: 'g-test' }, { ...local.apps[0], id: 'app-archived', co: 'Archived Co' }];
+    local.events = [...local.events, { ...local.events[0], id: 'ev-g-test:t1', emailId: 'g-test:t1' }];
+    const out = mergeSnapshot(local, server);
+    expect(out.apps.some((a) => a.id === 'app-gone')).toBe(false);
+    expect(out.apps.some((a) => a.id === 'app-archived')).toBe(true);
+    expect(out.events.some((v) => v.id === 'ev-g-test:t1')).toBe(false);
+  });
+
   it('Google Calendar busy blocks follow the server; stale ones are dropped', () => {
     const busy = (id: string, start: number) => ({ id, kind: 'busy' as const, co: 'Standup', role: 'Google Calendar', stage: 'busy' as const, date: '2026-10-27', start, end: start + 0.5, added: true });
     const local = { ...buildDemoData() };

@@ -202,7 +202,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
   // Applications: one per company, stage from the most recent stage-defining email.
   const groups = new Map<string, Email[]>();
   for (const e of emails) {
-    if (!e.company || e.cat === 'auto' || e.cat === 'review' || e.archived) continue;
+    if (!e.company || e.cat === 'auto' || e.cat === 'review' || e.cat === 'other' || e.cat === 'sent' || e.archived) continue;
     const k = slug(e.company);
     if (!k) continue;
     (groups.get(k) || groups.set(k, []).get(k)!).push(e);
@@ -255,7 +255,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
     }));
 
   const activity: ActivityItem[] = emails
-    .filter((e) => e.cat !== 'auto')
+    .filter((e) => e.cat !== 'auto' && e.cat !== 'other' && e.cat !== 'sent')
     .slice(0, 8)
     .map((e) => ({
       text: (e.company || e.fromName) + ' ' + (PHRASE[e.cat] || 'sent a message'),

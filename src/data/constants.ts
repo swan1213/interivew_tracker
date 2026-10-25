@@ -58,6 +58,7 @@ export const CAT: Record<Cat, { l: string; i: IconName }> = {
   offer: { l: 'Offer', i: 'award' },
   review: { l: 'Needs Review', i: 'help' },
   sent: { l: 'Sent', i: 'send' },
+  other: { l: 'Other mail', i: 'mail' },
 };
 export const CAT_KEYS = Object.keys(CAT) as Cat[];
 
@@ -116,6 +117,7 @@ export const INBOX_TITLES: Record<InboxView, string> = {
   rejected: 'Rejections',
   auto: 'Automated / no-reply',
   sent: 'Sent',
+  other: 'Other mail',
 };
 
 export const SAVED_FILTERS: { k: string; l: string }[] = [

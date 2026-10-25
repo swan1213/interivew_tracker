@@ -44,9 +44,11 @@ export function mergeSnapshot(local: Data, server: DataSnapshot): Data {
       ai: suggest ? { stage: s.stage, text: 'moving to ' + stageLabel(s.stage) + ' based on the latest email.' } : l.locked ? null : l.ai,
     };
   });
-  // Keep local-only applications (e.g. a company whose mail was archived).
+  // Keep local-only applications (e.g. a company whose mail was archived), but not ones
+  // from a mailbox that is no longer connected: they would inflate every count.
+  const connected = new Set(server.accts.map((a) => a.id));
   local.apps.forEach((a) => {
-    if (!serverIds.has(a.id)) apps.push(a);
+    if (!serverIds.has(a.id) && connected.has(a.acct)) apps.push(a);
   });
 
   const lEv = new Map(local.events.map((v) => [v.id, v]));
@@ -57,7 +59,8 @@ export function mergeSnapshot(local: Data, server: DataSnapshot): Data {
   });
   const serverEv = new Set(server.events.map((v) => v.id));
   local.events.forEach((v) => {
-    if (!serverEv.has(v.id) && !isPulledBusy(v)) events.push(v);
+    const acct = v.acct || v.emailId?.split(':')[0];
+    if (!serverEv.has(v.id) && !isPulledBusy(v) && (!acct || connected.has(acct))) events.push(v);
   });
 
   const lNotif = new Map(local.notifs.map((n) => [n.id, n]));

@@ -3,7 +3,8 @@ import { actionCount, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { DFULL, MN, PRI_RANK, STAGES, STG, type IconName } from '@/data/constants';
 import type { CalEvent, Email } from '@/data/types';
-import { effCat, needsAction } from '@/lib/mail';
+import { effCat, inView, needsAction } from '@/lib/mail';
+import { currentMember } from '@/lib/roles';
 import { activeEvents, busyAt } from '@/lib/calendar';
 import { dObj, fmtT, lab, minutesLabel, rel, tzOffset } from '@/lib/time';
 import { cx, firstName, truncate } from '@/lib/util';
@@ -11,6 +12,27 @@ import { Icon } from '@/ui/Icon';
 import { CatChip, CoBadge, Empty, PriBadge, RowBar } from '@/ui/bits';
 
 interface Kpi { label: string; icon: IconName; n: number; hot?: boolean; go: () => void }
+
+/** Mail that counts toward the job-search numbers (not your own sent mail, automated or unrelated mail). */
+const isRecruitment = (e: Email): boolean => !['auto', 'other', 'sent'].includes(effCat(e));
+
+/** Events on your Google Calendar whose title says they are an interview. */
+const INTERVIEW_TITLE = /\b(interview|screen(ing)?|recruiter|hiring manager|onsite|on-site|technical|panel|final round)\b/i;
+
+/** One row of Upcoming interviews: a scheduled event, or an interview confirmed by email whose time wasn't stated. */
+export interface UpcomingItem { id: string; ev?: CalEvent; email?: Email }
+
+export function upcomingInterviews(events: CalEvent[], all: Email[], today: string): UpcomingItem[] {
+  const evs = events
+    .filter((v) => v.date >= today && (v.kind === 'interview' ? v.added || !!v.emailId : INTERVIEW_TITLE.test(v.co)))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const withEvent = new Set(evs.map((v) => v.emailId).filter(Boolean));
+  const untimed = all.filter((e) => effCat(e) === 'confirmed' && !e.evId && !withEvent.has(e.id) && !e.done);
+  return [...evs.map((ev) => ({ id: ev.id, ev })), ...untimed.map((email) => ({ id: 'mail-' + email.id, email }))];
+}
+
+/** Today's events in time order: interviews on the calendar and your other commitments. */
+export const todaysEvents = (events: CalEvent[], today: string): CalEvent[] => activeEvents(events).filter((v) => v.date === today).sort((a, b) => a.start - b.start);
 
 /** One-paragraph daily briefing built only from facts in the workspace. */
 export function buildBriefing(st: AppState, all: Email[], actionN: number, unreadRec: number, waiting: number, todayEvs: CalEvent[]): string {
@@ -23,29 +45,31 @@ export function buildBriefing(st: AppState, all: Email[], actionN: number, unrea
     (waiting ? ', including ' + waiting + ' recruiter' + (waiting > 1 ? 's' : '') + ' waiting for your availability' : '') + '. ';
   const nxt = todayEvs.find((v) => v.start > st.nowHour);
   brief += nxt
-    ? 'Your next scheduled event is today at ' + fmtT(nxt.start + off) + ' ' + tz + ': ' + nxt.co + ' ' + nxt.role.toLowerCase() + '. '
+    ? 'Your next scheduled event is today at ' + fmtT(nxt.start + off) + ' ' + tz + ': ' + nxt.co + (nxt.kind === 'interview' ? ' ' + nxt.role.toLowerCase() : '') + '. '
     : 'Nothing else is scheduled today. ';
 
-  // Interviews confirmed by email but not yet on the calendar.
+  // Interviews confirmed by email but not yet on the calendar (once per company).
+  const told = new Set<string>();
+  const once = (co: string) => !told.has(co) && !!told.add(co);
   st.events
     .filter((v) => v.kind === 'interview' && !v.added && v.emailId && v.date >= st.today)
     .filter((v) => {
       const e = all.find((x) => x.id === v.emailId);
-      return e && needsAction(e);
+      return e && needsAction(e) && once('cal:' + v.co);
     })
     .forEach((v) => {
       brief += v.co + ' confirmed a ' + v.role.split(',')[0].toLowerCase() + ' ' + rel(v.date, st.today).toLowerCase() + ' at ' + fmtT(v.start + off) + ' ' + tz + ", but it isn't on your calendar yet. ";
     });
 
-  // Open reschedule requests, with any option that collides with an existing commitment.
+  // Open reschedule requests (once per company), with any option that collides with an existing commitment.
   all
-    .filter((e) => e.mode === 'resched' && needsAction(e) && e.opts && e.opts.length)
+    .filter((e) => e.mode === 'resched' && needsAction(e) && e.opts && e.opts.length && once('resched:' + (e.company || e.fromAddr)))
     .forEach((e) => {
       const ev = e.evId ? st.events.find((v) => v.id === e.evId) : undefined;
       const origDay = ev ? DFULL[dObj(ev.date).getUTCDay()] : 'the interview';
       const clash = (e.opts || []).map(([d, h]) => busyAt(active, d, h, h + 1, e.evId)).find(Boolean);
       const clashName = clash ? (clash.kind === 'interview' ? clash.co + ' interview' : clash.co.toLowerCase()) : '';
-      brief += e.company + ' asked to reschedule ' + origDay + (clash ? '; one of their proposed times conflicts with your ' + clashName + '.' : '; pick one of their proposed times.') + ' ';
+      brief += (e.company || e.fromName) + ' asked to reschedule ' + origDay + (clash ? '; one of their proposed times conflicts with your ' + clashName + '.' : '; pick one of their proposed times.') + ' ';
     });
   return brief.trim();
 }
@@ -55,31 +79,32 @@ export function Dashboard() {
   const all = visibleAll(st.emails, st.accts);
   const off = tzOffset(st.S.tz);
   const actionN = actionCount(all);
-  const unreadRec = all.filter((e) => e.unread && effCat(e) !== 'auto').length;
-  const waiting = all.filter((e) => (effCat(e) === 'avail' || e.sec === 'avail' || e.mode === 'avail') && needsAction(e)).length;
+  const unreadRec = all.filter((e) => e.unread && isRecruitment(e)).length;
+  // The same rule as the Availability Requests view, so the number matches the list it opens.
+  const waiting = all.filter((e) => inView(e, 'avail') && needsAction(e)).length;
   const offers = all.filter((e) => effCat(e) === 'offer').length;
   const priority = all
     .filter(needsAction)
     .sort((a, b) => PRI_RANK[a.pri] - PRI_RANK[b.pri] || a.ago - b.ago)
     .slice(0, 5);
 
-  const interviews = st.events.filter((v) => v.kind === 'interview');
-  const todayEvs = interviews.filter((v) => v.added && v.date === st.today).sort((a, b) => a.start - b.start);
-  const upcoming = interviews
-    .filter((v) => v.date >= st.today && (v.added || v.emailId))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
-  const upcomingAdded = interviews.filter((v) => v.added && v.date >= st.today).length;
+  const todayEvs = todaysEvents(st.events, st.today);
+  const upcoming = upcomingInterviews(st.events, all, st.today);
   const briefing = buildBriefing(st, all, actionN, unreadRec, waiting, todayEvs);
 
   const d = dObj(st.today);
-  const greeting = st.nowHour < 12 ? 'Good morning' : st.nowHour < 17 ? 'Good afternoon' : 'Good evening';
+  // Greet in the viewer's own time; event times stay in ET.
+  const localHour = provider.isDemo ? st.nowHour : new Date().getHours();
+  const greeting = localHour < 12 ? 'Good morning' : localHour < 17 ? 'Good afternoon' : 'Good evening';
+  const me = currentMember(st)?.name || st.S.name;
+  const myName = firstName(me.includes('@') ? me.split('@')[0] : me);
 
   const kpis: Kpi[] = [
     { label: 'Connected accounts', icon: 'plug', n: st.accts.length, go: () => st.go('accounts') },
     { label: 'Total applications', icon: 'kanban', n: st.apps.length, go: () => st.go('track') },
     { label: 'Unread recruitment emails', icon: 'mail', n: unreadRec, go: () => st.go('inbox', { view: 'inbox', unreadOnly: true, savedKey: '' }) },
     { label: 'Action required', icon: 'bolt', n: actionN, hot: true, go: () => st.openView('action') },
-    { label: 'Upcoming interviews', icon: 'video', n: upcomingAdded, go: () => st.go('cal', { calView: 'agenda', calDate: st.today }) },
+    { label: 'Upcoming interviews', icon: 'video', n: upcoming.length, go: () => st.go('cal', { calView: 'agenda', calDate: st.today }) },
     { label: 'Availability requests', icon: 'clock', n: waiting, hot: true, go: () => st.openView('avail') },
     { label: 'Offers received', icon: 'award', n: offers, go: () => st.openView('offers') },
   ];
@@ -91,7 +116,7 @@ export function Dashboard() {
       <div className="ph">
         <div>
           <h1>
-            {greeting}, {firstName(st.S.name)}
+            {greeting}, {myName}
           </h1>
           <p>
             {DFULL[d.getUTCDay()]}, {MN[d.getUTCMonth()]} {d.getUTCDate()} · {provider.isDemo ? 'demo workspace' : 'workspace'} · {st.accts.length} account{st.accts.length === 1 ? '' : 's'} synced
@@ -220,17 +245,15 @@ export function Dashboard() {
                   <small>{minutesLabel(v)}</small>
                 </span>
                 <span style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ fontWeight: 600 }}>
-                    {v.co}: {v.role}
-                  </b>
+                  <b style={{ fontWeight: 600 }}>{v.kind === 'interview' ? v.co + ': ' + v.role : v.co}</b>
                   <div className="mini">
-                    {v.platform} · {v.link} · with {v.interviewer}
+                    {(v.kind === 'interview' ? [v.platform, v.link, v.interviewer && 'with ' + v.interviewer] : [v.platform, v.location, v.role]).filter(Boolean).join(' · ')}
                   </div>
                 </span>
                 <span className={cx('chip', STG[v.stage].cls)}>{STG[v.stage].label}</span>
               </button>
             ))}
-            {todayEvs.length === 0 && <Empty title="No interviews today" style={{ padding: 24 }} />}
+            {todayEvs.length === 0 && <Empty title="Nothing scheduled today" style={{ padding: 24 }} />}
           </section>
 
           <section className="card" aria-label="Upcoming interviews">
@@ -243,10 +266,30 @@ export function Dashboard() {
                 Agenda
               </button>
             </div>
-            {upcoming.map((v) => {
+            {upcoming.map(({ id, ev: v, email }) => {
+              if (!v) {
+                const e = email!;
+                return (
+                  <button key={id} type="button" className="sched" onClick={() => st.openEmail(e.id)}>
+                    <span className="tm">
+                      Time
+                      <small>not stated</small>
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <b style={{ fontWeight: 600 }}>
+                        {e.company || e.fromName}: {e.role || e.stage || 'Interview'}
+                      </b>
+                      <div className="mini" style={{ color: 'var(--warn)', fontWeight: 600 }}>
+                        Confirmed by email; open it to see when and add it to your calendar
+                      </div>
+                    </span>
+                    <CatChip cat="confirmed" />
+                  </button>
+                );
+              }
               const em = v.emailId ? all.find((e) => e.id === v.emailId) : undefined;
               const resched = !!em && em.mode === 'resched' && needsAction(em);
-              const warn = !v.added || resched;
+              const warn = (v.kind === 'interview' && !v.added) || resched;
               return (
                 <button
                   key={v.id}
@@ -259,12 +302,8 @@ export function Dashboard() {
                     <small>{fmtT(v.start + off)}</small>
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
-                    <b style={{ fontWeight: 600 }}>
-                      {v.co}: {v.role}
-                    </b>
-                    <div className="mini">
-                      {v.platform} · {v.interviewer}
-                    </div>
+                    <b style={{ fontWeight: 600 }}>{v.kind === 'interview' ? v.co + ': ' + v.role : v.co}</b>
+                    <div className="mini">{(v.kind === 'interview' ? [v.platform, v.interviewer] : [v.platform, v.location, 'Google Calendar']).filter(Boolean).join(' · ')}</div>
                     {warn && (
                       <div className="mini" style={{ color: 'var(--warn)', fontWeight: 600 }}>
                         {!v.added ? 'Confirmed by email but not on your calendar yet' : 'Reschedule requested. Original time held.'}
