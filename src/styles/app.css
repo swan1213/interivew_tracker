@@ -179,11 +179,11 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .act b{font-weight:650}
 .act .sp{flex:1;min-width:160px}
 .thread{background:var(--sf);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
-.tm{display:flex;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bd)}
-.tm.fold{padding-top:11px;padding-bottom:11px;cursor:pointer}
-.tm.fold:hover{background:var(--sf2)}
+.tmsg{display:flex;gap:12px;padding:16px 20px;border-bottom:1px solid var(--bd)}
+.tmsg.fold{padding-top:11px;padding-bottom:11px;cursor:pointer}
+.tmsg.fold:hover{background:var(--sf2)}
 .tav{width:40px;height:40px;border-radius:99px;flex:none;display:grid;place-items:center;color:#fff;font-weight:600;font-size:16px}
-.tm.fold .tav{width:32px;height:32px;font-size:13px;margin:0 4px}
+.tmsg.fold .tav{width:32px;height:32px;font-size:13px;margin:0 4px}
 .tmb{flex:1;min-width:0}
 .tmh{display:flex;align-items:baseline;gap:12px;width:100%;text-align:left;padding:0;background:none;border:0;color:inherit;cursor:pointer}
 .tmh:disabled{cursor:default}
@@ -191,9 +191,9 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .tmh .who b{font-weight:650}
 .tmh .addr{color:var(--tx3);font-size:12px;margin-left:6px}
 .tmh .when{flex:none;font-size:12px;color:var(--tx3)}
-.tm .to{font-size:12px;color:var(--tx3);margin-top:1px;display:flex;gap:10px;align-items:center}
-.tm .lnk{background:none;border:0;padding:0;color:var(--ac);font-size:12px;cursor:pointer}
-.tm .lnk:hover{text-decoration:underline}
+.tmsg .to{font-size:12px;color:var(--tx3);margin-top:1px;display:flex;gap:10px;align-items:center}
+.tmsg .lnk{background:none;border:0;padding:0;color:var(--ac);font-size:12px;cursor:pointer}
+.tmsg .lnk:hover{text-decoration:underline}
 .tbody{margin-top:14px;font-size:14px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere;color:var(--tx)}
 .tatt{margin-top:12px}
 .snip{font-size:13px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
@@ -201,7 +201,7 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .tact{display:flex;gap:10px;flex-wrap:wrap;padding:16px 20px 18px 72px}
 .pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 20px;border-radius:99px;border:1px solid var(--tx3);background:var(--sf);color:var(--tx2);font-weight:550;font-size:13px;cursor:pointer}
 .pill:hover{background:var(--sf2);color:var(--tx)}
-@media (max-width:640px){.tm{padding:14px}.tact{padding-left:14px}}
+@media (max-width:640px){.tmsg{padding:14px}.tact{padding-left:14px}}
 .att{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border:1px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);margin-right:6px}
 .comp{background:var(--sf);border:1px solid var(--ac);border-radius:12px;overflow:hidden;box-shadow:0 0 0 3px var(--acs)}
 .comp textarea{width:100%;min-height:170px;border:0;outline:0;padding:12px 14px;resize:vertical;background:transparent;line-height:1.6;font-size:13.5px}

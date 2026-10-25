@@ -469,7 +469,7 @@ function Thread({ e }: { e: Email }) {
         const isOpen = open.has(i);
         const color = m.mine ? 'var(--acb)' : colorFor(m.from);
         return (
-          <article className={cx('tm', !isOpen && 'fold')} key={i} onClick={isOpen ? undefined : () => toggle(i)}>
+          <article className={cx('tmsg', !isOpen && 'fold')} key={i} onClick={isOpen ? undefined : () => toggle(i)}>
             <span className="tav" style={{ background: color }} aria-hidden="true">
               {m.from.trim().charAt(0).toUpperCase()}
             </span>
