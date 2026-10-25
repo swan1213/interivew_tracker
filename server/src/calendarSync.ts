@@ -77,6 +77,33 @@ export function toGoogleEvent(ev: CalEvent): GEvent {
   };
 }
 
+/** Event descriptions are often HTML; keep readable text with line breaks. */
+export function plainText(html: string): string {
+  return html
+    .replace(/<br\s*\/?>|<\/(p|div|li)>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, 1500);
+}
+
+const MEETING_URL = /https?:\/\/[^\s<>"]*(zoom\.us|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com|chime\.aws)[^\s<>"]*/i;
+const PLATFORMS: [RegExp, string][] = [[/zoom\./i, 'Zoom'], [/teams\./i, 'Microsoft Teams'], [/meet\.google/i, 'Google Meet'], [/webex/i, 'Webex'], [/chime/i, 'Amazon Chime']];
+
+/** The video link and its service: Google Meet / conference data first, else a meeting URL in the location or notes. */
+function meetingOf(g: GEvent, notes: string): { link?: string; platform?: string } {
+  const video = g.conferenceData?.entryPoints?.find((p) => p.entryPointType === 'video')?.uri;
+  const link = g.hangoutLink || video || MEETING_URL.exec(g.location || '')?.[0] || MEETING_URL.exec(notes)?.[0];
+  if (!link) return {};
+  return { link, platform: g.conferenceData?.conferenceSolution?.name || PLATFORMS.find(([re]) => re.test(link))?.[1] || 'Video call' };
+}
+
 /** A Google event as a busy block, or null for events that don't block time. */
 export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
   if (!g.id || g.status === 'cancelled' || g.transparency === 'transparent') return null;
@@ -87,7 +114,27 @@ export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
   const e = etParts(g.end.dateTime);
   const end = e.date === s.date ? e.hour : 24;
   if (end <= s.hour) return null;
-  return { id: 'gcal-' + acct.id + '-' + g.id, kind: 'busy', co: g.summary || 'Busy', role: 'Google Calendar', stage: 'busy', date: s.date, start: s.hour, end, added: true };
+  const notes = plainText(g.description || '');
+  const who = (p: { email?: string; displayName?: string }) => p.displayName || p.email || '';
+  const attendees = (g.attendees || []).filter((x) => !x.resource).map(who).filter(Boolean).slice(0, 25);
+  return {
+    id: 'gcal-' + acct.id + '-' + g.id,
+    kind: 'busy',
+    co: g.summary || 'Busy',
+    role: 'Google Calendar',
+    stage: 'busy',
+    date: s.date,
+    start: s.hour,
+    end,
+    added: true,
+    acct: acct.id,
+    ...meetingOf(g, notes),
+    ...(g.location ? { location: g.location } : {}),
+    ...(notes ? { notes } : {}),
+    ...(g.organizer && !g.organizer.self && who(g.organizer) ? { organizer: who(g.organizer) } : {}),
+    ...(attendees.length ? { attendees } : {}),
+    ...(g.htmlLink ? { htmlLink: g.htmlLink } : {}),
+  };
 }
 
 /** Pull the account's calendar into busy blocks. */

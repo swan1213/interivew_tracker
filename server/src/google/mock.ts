@@ -75,8 +75,11 @@ export class MockGmail implements GmailApi {
     demoAsGmail().forEach((m) => this.messages.set(m.id, m));
   }
 
-  async listMessageIds(_query: string, max: number): Promise<string[]> {
+  /** Understands the label searches sync uses (is:unread, is:starred, in:inbox); other terms match everything. */
+  async listMessageIds(query: string, max: number): Promise<string[]> {
+    const need = [['is:unread', 'UNREAD'], ['is:starred', 'STARRED'], ['in:inbox', 'INBOX']].filter(([q]) => query.split(' ').includes(q)).map(([, l]) => l);
     return Array.from(this.messages.values())
+      .filter((m) => need.every((l) => (m.labelIds || []).includes(l)))
       .sort((a, b) => parseInt(b.internalDate || '0', 10) - parseInt(a.internalDate || '0', 10))
       .slice(0, max)
       .map((m) => m.id);

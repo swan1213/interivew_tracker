@@ -73,12 +73,14 @@ function redisBackend(url: string, token: string): Backend {
 let backend: Backend | null = null;
 let backendFor = '';
 function store(): Backend {
-  const want = cfg.redisUrl ? 'redis:' + cfg.redisUrl : 'file:' + cfg.dataDir;
+  // Fake Google (dev:mock, tests) must never write its demo mailbox into a real Redis named in .env.
+  const redisUrl = cfg.mock ? '' : cfg.redisUrl;
+  const want = redisUrl ? 'redis:' + redisUrl : 'file:' + cfg.dataDir;
   if (backend && backendFor === want) return backend;
-  if (!cfg.redisUrl && process.env.VERCEL) {
+  if (!redisUrl && process.env.VERCEL) {
     throw new Error('No storage configured. Vercel does not keep files, so add Upstash Redis (Vercel → Storage) to set KV_REST_API_URL and KV_REST_API_TOKEN, then redeploy.');
   }
-  backend = cfg.redisUrl ? redisBackend(cfg.redisUrl, cfg.redisToken) : fileBackend();
+  backend = redisUrl ? redisBackend(redisUrl, cfg.redisToken) : fileBackend();
   backendFor = want;
   return backend;
 }

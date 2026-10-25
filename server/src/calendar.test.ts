@@ -48,7 +48,7 @@ describe('calendar mapping', () => {
     const { toBusy } = await import('./calendarSync');
     const a = acct('g1', []);
     const timed = { id: 'x', summary: 'Dentist', start: { dateTime: '2026-10-27T18:00:00Z' }, end: { dateTime: '2026-10-27T19:00:00Z' } };
-    expect(toBusy(a, timed)).toEqual({ id: 'gcal-g1-x', kind: 'busy', co: 'Dentist', role: 'Google Calendar', stage: 'busy', date: '2026-10-27', start: 14, end: 15, added: true });
+    expect(toBusy(a, timed)).toEqual({ id: 'gcal-g1-x', kind: 'busy', co: 'Dentist', role: 'Google Calendar', stage: 'busy', date: '2026-10-27', start: 14, end: 15, added: true, acct: 'g1' });
     expect(toBusy(a, { ...timed, transparency: 'transparent' })).toBeNull();
     expect(toBusy(a, { ...timed, status: 'cancelled' })).toBeNull();
     expect(toBusy(a, { ...timed, attendees: [{ self: true, responseStatus: 'declined' }] })).toBeNull();
@@ -56,6 +56,46 @@ describe('calendar mapping', () => {
     expect(toBusy(a, { id: 'y', start: { date: '2026-10-27' }, end: { date: '2026-10-28' } })).toBeNull();
     // Runs past midnight: blocked until the end of its first day.
     expect(toBusy(a, { id: 'z', start: { dateTime: '2026-10-28T02:00:00Z' }, end: { dateTime: '2026-10-28T06:00:00Z' } })?.end).toBe(24);
+  });
+});
+
+describe('meeting details, account colors and Gmail rate limits', () => {
+  it('carries the meeting link, place, people and readable notes', async () => {
+    const { toBusy } = await import('./calendarSync');
+    const v = toBusy(acct('g1', []), {
+      id: 'm', summary: 'Design review', location: 'Room 4B', htmlLink: 'https://calendar.google.com/event?eid=m',
+      start: { dateTime: '2026-10-27T18:00:00Z' }, end: { dateTime: '2026-10-27T19:00:00Z' },
+      description: '<p>Agenda:</p><ul><li>Specs &amp; risks</li></ul>Join: https://zoom.us/j/123?pwd=x',
+      organizer: { email: 'lead@corp.example', displayName: 'Dana Lead' },
+      attendees: [{ email: 'me@x.example', self: true }, { email: 'sam@corp.example', displayName: 'Sam' }, { email: 'room@resource.example', resource: true }],
+    })!;
+    expect(v.link).toBe('https://zoom.us/j/123?pwd=x');
+    expect(v.platform).toBe('Zoom');
+    expect(v.location).toBe('Room 4B');
+    expect(v.organizer).toBe('Dana Lead');
+    expect(v.attendees).toEqual(['me@x.example', 'Sam']);
+    expect(v.notes).toBe('Agenda:\nSpecs & risks\nJoin: https://zoom.us/j/123?pwd=x');
+    expect(v.htmlLink).toContain('calendar.google.com');
+    const meet = toBusy(acct('g1', []), { id: 'n', hangoutLink: 'https://meet.google.com/abc-defg-hij', conferenceData: { conferenceSolution: { name: 'Google Meet' } }, organizer: { self: true, email: 'me@x.example' }, start: { dateTime: '2026-10-27T18:00:00Z' }, end: { dateTime: '2026-10-27T18:30:00Z' } })!;
+    expect([meet.link, meet.platform, meet.organizer]).toEqual(['https://meet.google.com/abc-defg-hij', 'Google Meet', undefined]);
+  });
+
+  it('gives each mailbox its own color, keeping colors already distinct', async () => {
+    const { accountColors, ACCOUNT_COLORS } = await import('./derive');
+    const same = [acct('a', []), acct('b', []), acct('c', [])].map((x) => ({ ...x, color: '#3F6FD8' }));
+    expect([...accountColors(same).values()]).toEqual(ACCOUNT_COLORS.slice(0, 3));
+    const mixed = [{ ...acct('a', []), color: '#7C3AED' }, { ...acct('b', []), color: '#7C3AED' }];
+    expect([...accountColors(mixed).values()]).toEqual(['#7C3AED', '#3F6FD8']);
+  });
+
+  it('recognizes Gmail rate limiting and keeps Google errors short', async () => {
+    const { googleError, isRateLimited } = await import('./google/gmail');
+    const quota = JSON.stringify({ error: { code: 403, message: "Quota exceeded for quota metric 'Total Query Cost'", errors: [{ reason: 'rateLimitExceeded' }] } });
+    expect(isRateLimited(403, quota)).toBe(true);
+    expect(isRateLimited(429, '')).toBe(true);
+    expect(isRateLimited(403, JSON.stringify({ error: { message: 'Insufficient Permission' } }))).toBe(false);
+    expect(googleError(403, quota)).toBe("Quota exceeded for quota metric 'Total Query Cost'");
+    expect(googleError(500, 'oops')).toBe('oops');
   });
 });
 

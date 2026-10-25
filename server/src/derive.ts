@@ -46,14 +46,32 @@ export function evStageOf(stageText: string): EvStage {
   return 'screen';
 }
 
-export function accountView(a: StoredAccount, now: Date): Account {
+/** Distinct mailbox colors (white text reads on each), handed out in this order. */
+export const ACCOUNT_COLORS = ['#3F6FD8', '#0F7C8C', '#C2410C', '#7C3AED', '#15803D', '#BE185D', '#B45309', '#475569'];
+
+/** One color per account: its own, unless an earlier account already shows it (accounts saved before colors were assigned all share one). */
+export function accountColors(accounts: StoredAccount[]): Map<string, string> {
+  const used = new Set<string>();
+  const out = new Map<string, string>();
+  for (const a of accounts) {
+    const c = a.color && !used.has(a.color) ? a.color : ACCOUNT_COLORS.find((x) => !used.has(x)) || a.color;
+    used.add(c);
+    out.set(a.id, c);
+  }
+  return out;
+}
+
+/** The first letter of the address, so two mailboxes don't both show "G". */
+export const accountInitial = (email: string): string => (email.trim()[0] || 'G').toUpperCase();
+
+export function accountView(a: StoredAccount, now: Date, color = a.color): Account {
   return {
     id: a.id,
     label: a.name && a.name !== a.email ? a.name + ' · Gmail' : a.email,
     addr: a.email,
     provider: 'Gmail',
-    color: a.color,
-    initial: a.initial,
+    color,
+    initial: accountInitial(a.email),
     sendAs: a.name || a.email,
     calendar: hasCalendar(a),
     sync: a.lastSync ? 'Synced ' + relLabel(a.lastSync, now).toLowerCase().replace(/^just now$/, 'just now') : 'Not synced yet',
@@ -124,7 +142,8 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
 }
 
 export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, MailStore>, now: Date = new Date()): DataSnapshot {
-  const accts = accounts.map((a) => accountView(a, now));
+  const colors = accountColors(accounts);
+  const accts = accounts.map((a) => accountView(a, now, colors.get(a.id)));
   const emails: Email[] = [];
   const stageText = new Map<string, string>();
   for (const a of accounts) {
@@ -163,6 +182,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
         link: cls.link || '',
         interviewer: cls.interviewer || cls.recruiter || 'Not stated',
         emailId: id,
+        acct: a.id,
         added: false,
         rem: [1440, 60],
       });

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { cfg, tokenSecret } from './config';
 import { decrypt, encrypt } from './crypto';
 import { busyEvents, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
-import { buildSnapshot } from './derive';
+import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot } from './derive';
 import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
@@ -161,13 +161,15 @@ export function createApi(): express.Express {
         back('error=' + encodeURIComponent('Google did not issue a refresh token. Remove this app under your Google account permissions, then connect again.'));
         return;
       }
+      const others = accts.filter((a) => a.id !== id);
+      const taken = new Set(accountColors(others).values());
       const acct: StoredAccount = {
         id,
         email,
         name: info.name || email,
         provider: 'Gmail',
-        color: '#3F6FD8',
-        initial: 'G',
+        color: existing && !taken.has(existing.color) ? existing.color : ACCOUNT_COLORS.find((c) => !taken.has(c)) || ACCOUNT_COLORS[others.length % ACCOUNT_COLORS.length],
+        initial: accountInitial(email),
         refreshToken,
         accessToken: encrypt(tokens.access_token, secret),
         expiresAt: Date.now() + tokens.expires_in * 1000,

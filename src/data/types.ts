@@ -152,6 +152,14 @@ export interface CalEvent {
   link?: string;
   interviewer?: string;
   emailId?: string;
+  /** Mailbox (and its Google Calendar) the event belongs to. */
+  acct?: string;
+  /** Google Calendar details, on busy blocks pulled from it. */
+  location?: string;
+  notes?: string;
+  organizer?: string;
+  attendees?: string[];
+  htmlLink?: string;
   /** On the user's calendar. False means known from email but not added, or removed. */
   added: boolean;
   /** Reminder offsets in minutes. */

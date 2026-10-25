@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import { drag, useStore } from '@/store/store';
 import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
@@ -6,13 +7,36 @@ import { activeEvents, conflictCount, conflictOf } from '@/lib/calendar';
 import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { Empty, Fact, Seg } from '@/ui/bits';
+import { AcDot, Empty, Fact, Seg } from '@/ui/bits';
 
-/** Calendars the interviews sync to; the demo shows its fictional ones. */
-function syncedCalendars(accts: Account[]): { label: string; ok: boolean }[] {
-  if (provider.isDemo) return [{ label: 'Google Calendar synced', ok: true }, { label: 'Microsoft Calendar synced', ok: true }];
-  if (!accts.length) return [];
-  return accts.some((a) => a.calendar) ? [{ label: 'Google Calendar synced', ok: true }] : [{ label: 'Reconnect Gmail to sync Google Calendar', ok: false }];
+/** Calendars shown in the header, one per mailbox in its color; the demo shows its fictional ones. */
+function calendarSources(accts: Account[]): { label: string; color: string; title: string }[] {
+  if (provider.isDemo) return ['Google Calendar synced', 'Microsoft Calendar synced'].map((label) => ({ label, color: 'var(--ok)', title: label }));
+  return accts.map((a) =>
+    a.calendar
+      ? { label: a.addr, color: a.color, title: 'Google Calendar synced for ' + a.addr }
+      : { label: a.addr + ' · reconnect for calendar', color: 'var(--warn)', title: 'Connect ' + a.addr + ' again and allow Google Calendar access' },
+  );
+}
+
+/** The mailbox an event belongs to. */
+const acctOf = (accts: Account[], v: CalEvent): Account | undefined => (v.acct ? accts.find((a) => a.id === v.acct) : undefined);
+
+/** A stripe in the mailbox color down the event's left edge, plus the selection ring. */
+function accent(a: Account | undefined, selected = false): CSSProperties | undefined {
+  const shadows = [a ? 'inset 3px 0 0 ' + a.color : '', selected ? '0 0 0 2px var(--ac)' : ''].filter(Boolean);
+  return shadows.length ? { boxShadow: shadows.join(', ') } : undefined;
+}
+
+/** Meeting links in mail often lack a scheme. */
+const href = (link: string): string => (/^https?:\/\//i.test(link) ? link : 'https://' + link);
+
+function LinkOut({ url, children }: { url: string; children?: string }) {
+  return (
+    <a href={href(url)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--ac)', wordBreak: 'break-all' }}>
+      {children || url}
+    </a>
+  );
 }
 
 const range = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
@@ -84,9 +108,9 @@ export function CalendarPage() {
             <option value="UTC">UTC</option>
           </select>
         </label>
-        {syncedCalendars(st.accts).map((c) => (
-          <span key={c.label} className="tag">
-            <span className="cdot" style={{ background: c.ok ? 'var(--ok)' : 'var(--warn)' }} />
+        {calendarSources(st.accts).map((c) => (
+          <span key={c.label} className="tag" title={c.title}>
+            <span className="cdot" style={{ background: c.color }} />
             {c.label}
           </span>
         ))}
@@ -190,12 +214,13 @@ function EventBlock({ v, active }: { v: CalEvent; active: CalEvent[] }) {
   const isIv = v.kind === 'interview';
   const c = isIv ? conflictOf(v, active) : null;
   const h = Math.max(22, (v.end - v.start) * HOUR_PX - 2);
+  const sel = st.calSel === v.id;
   return (
     <button
       type="button"
-      className={cx('ev', STG[v.stage].cls, !isIv && 'busy', st.calSel === v.id && 'sel3', c && 'cf')}
-      style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h }}
-      onClick={() => st.patch({ calSel: isIv ? v.id : '' })}
+      className={cx('ev', STG[v.stage].cls, !isIv && 'busy', sel && 'sel3', c && 'cf')}
+      style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h, ...accent(acctOf(st.accts, v), sel) }}
+      onClick={() => st.patch({ calSel: v.id })}
       draggable={isIv}
       onDragStart={(e) => {
         drag.ev = v.id;
@@ -235,7 +260,7 @@ function MonthGrid({ active }: { active: CalEvent[] }) {
           <button key={dt} type="button" className={cx('mc', o.getUTCMonth() !== month && 'dim')} onClick={() => st.patch({ calDate: dt, calView: 'day' })} aria-label={lab(dt) + (es.length ? ', ' + es.length + ' events' : '')}>
             <span className={cx('dnum', dt === st.today && 'today')}>{o.getUTCDate()}</span>
             {es.slice(0, 3).map((v) => (
-              <span key={v.id} className={cx('mev', STG[v.stage].cls)}>
+              <span key={v.id} className={cx('mev', STG[v.stage].cls)} style={accent(acctOf(st.accts, v))}>
                 {fmtT(v.start + off).replace(':00', '')} {v.co}
               </span>
             ))}
@@ -264,8 +289,10 @@ function Agenda({ active }: { active: CalEvent[] }) {
             {es.map((v) => {
               const isIv = v.kind === 'interview';
               const conflict = isIv && !!conflictOf(v, active);
+              const a = acctOf(st.accts, v);
+              const where = [v.platform, v.location && v.location !== v.link ? v.location : ''].filter(Boolean).join(' · ');
               return (
-                <button key={v.id} type="button" className="agi" onClick={() => st.patch({ calSel: isIv ? v.id : '', calView: 'week', calDate: dt })}>
+                <button key={v.id} type="button" className="agi" onClick={() => st.patch({ calSel: v.id, calView: 'week', calDate: dt })}>
                   <span className="tm">
                     {fmtT(v.start + off)}
                     <small>{minutesLabel(v)}</small>
@@ -274,8 +301,9 @@ function Agenda({ active }: { active: CalEvent[] }) {
                     <b style={{ fontWeight: 600 }}>
                       {v.co}: {v.role}
                     </b>
-                    <div className="mini">{isIv ? v.platform + ' · with ' + v.interviewer : 'Existing commitment'}</div>
+                    <div className="mini">{isIv ? v.platform + ' · with ' + v.interviewer : where || 'Existing commitment'}</div>
                   </span>
+                  {a && <AcDot color={a.color} initial={a.initial} size={16} title={a.addr} />}
                   {conflict && (
                     <span className="chip" style={{ ['--c' as string]: 'var(--bad)', ['--cb' as string]: 'var(--badb)' }}>
                       Conflict
@@ -307,6 +335,8 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
     [S.customRem, S.customRem + ' min (custom)'],
   ];
   const linkedEmail = v.emailId ? st.emails.find((e) => e.id === v.emailId) : undefined;
+  const a = acctOf(st.accts, v);
+  const guests = v.attendees || [];
   return (
     <>
       <div>
@@ -325,11 +355,28 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
         <Fact label={'When (' + S.tz + ')'}>
           {rel(v.date, st.today)} · {fmtT(v.start + off)} to {fmtT(v.end + off)}
         </Fact>
+        {a && (
+          <Fact label="Calendar">
+            <span className="ln" style={{ gap: 6 }}>
+              <AcDot color={a.color} initial={a.initial} size={16} />
+              {a.addr}
+            </span>
+          </Fact>
+        )}
+        {!isIv && v.platform && <Fact label="Platform">{v.platform}</Fact>}
+        {!isIv && v.link && (
+          <Fact label="Meeting link">
+            <LinkOut url={v.link} />
+          </Fact>
+        )}
+        {!isIv && v.location && v.location !== v.link && <Fact label="Location">{v.location}</Fact>}
+        {!isIv && v.organizer && <Fact label="Organizer">{v.organizer}</Fact>}
+        {!isIv && guests.length > 0 && <Fact label={'Guests (' + guests.length + ')'}>{guests.slice(0, 8).join(', ') + (guests.length > 8 ? ' and ' + (guests.length - 8) + ' more' : '')}</Fact>}
         {isIv && (
           <>
             <Fact label="Interviewer">{v.interviewer}</Fact>
             <Fact label="Platform">{v.platform}</Fact>
-            <Fact label="Meeting link">{v.link}</Fact>
+            <Fact label="Meeting link">{v.link ? <LinkOut url={v.link} /> : 'Not stated'}</Fact>
             <Fact label="Synced to">{provider.isDemo ? 'Google Calendar and Microsoft Calendar' : v.added && st.accts.some((a) => a.calendar) ? 'Google Calendar' : 'Not synced'}</Fact>
           </>
         )}
@@ -337,6 +384,28 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
       {c && (
         <div className="act" style={{ fontSize: 12 }}>
           This overlaps with {c.co}. Move one of them or reschedule.
+        </div>
+      )}
+      {!isIv && v.notes && (
+        <div>
+          <span className="fl">Notes</span>
+          <div className="mini" style={{ whiteSpace: 'pre-wrap', maxHeight: 220, overflow: 'auto' }}>
+            {v.notes}
+          </div>
+        </div>
+      )}
+      {!isIv && (v.link || v.htmlLink) && (
+        <div className="ln wrap">
+          {v.link && (
+            <a className="btn sm pri" href={href(v.link)} target="_blank" rel="noopener noreferrer">
+              Join meeting
+            </a>
+          )}
+          {v.htmlLink && (
+            <a className="btn sm" href={v.htmlLink} target="_blank" rel="noopener noreferrer">
+              Open in Google Calendar
+            </a>
+          )}
         </div>
       )}
       {isIv && (

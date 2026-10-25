@@ -13,7 +13,11 @@ export interface GEvent {
   transparency?: string;
   start?: { dateTime?: string; date?: string; timeZone?: string };
   end?: { dateTime?: string; date?: string; timeZone?: string };
-  attendees?: { self?: boolean; responseStatus?: string }[];
+  attendees?: { email?: string; displayName?: string; self?: boolean; responseStatus?: string; resource?: boolean }[];
+  organizer?: { email?: string; displayName?: string; self?: boolean };
+  hangoutLink?: string;
+  conferenceData?: { entryPoints?: { entryPointType?: string; uri?: string }[]; conferenceSolution?: { name?: string } };
+  htmlLink?: string;
   reminders?: { useDefault: boolean; overrides?: { method: string; minutes: number }[] };
   extendedProperties?: { private?: Record<string, string> };
 }

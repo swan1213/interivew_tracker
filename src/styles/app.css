@@ -244,7 +244,7 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .avail{position:absolute;left:0;right:0;background:color-mix(in srgb,var(--ok) 7%,transparent);pointer-events:none}
 .ev{position:absolute;left:3px;right:3px;border-radius:7px;padding:3px 7px;overflow:hidden;font-size:11.5px;line-height:1.3;cursor:pointer;color:var(--c);background:var(--cb);border:1px solid color-mix(in srgb,var(--c) 40%,transparent);text-align:left;z-index:3}
 .ev b{display:block;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ev.busy{border-style:dashed;cursor:default}
+.ev.busy{border-style:dashed}
 .ev.sel3{box-shadow:0 0 0 2px var(--ac)}
 .ev.cf{border-color:var(--bad);border-width:2px}
 .mgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));min-width:640px}

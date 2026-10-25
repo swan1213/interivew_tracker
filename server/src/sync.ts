@@ -6,6 +6,9 @@ import { parseMessage } from './mime';
 import { readAccounts, readMail, writeAccounts, writeMail } from './store';
 import type { StoredAccount, StoredThread } from './types';
 
+/** The labels the UI mirrors, and the Gmail search that finds each. Order matters below. */
+const LABEL_QUERIES: Record<string, string> = { UNREAD: 'is:unread', STARRED: 'is:starred', INBOX: 'in:inbox' };
+
 async function pooled<T>(items: T[], width: number, fn: (x: T) => Promise<void>): Promise<void> {
   let i = 0;
   const workers = Array.from({ length: Math.min(width, items.length) }, async () => {
@@ -30,19 +33,27 @@ export async function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(
   const skipped = new Set(mail.skipped);
   let added = 0;
 
-  await pooled(
-    ids.filter((id) => known.has(id)),
-    6,
-    async (id) => {
-      try {
-        const m = await api.getMessage(id, 'minimal');
+  // Refresh read/starred/archived on known messages with three searches rather than
+  // one request per message, which used up Gmail's per-minute quota on large mailboxes.
+  const knownIds = ids.filter((id) => known.has(id));
+  if (knownIds.length) {
+    try {
+      const [unread, starred, inbox] = await Promise.all(
+        Object.keys(LABEL_QUERIES).map(async (label) => new Set(await api.listMessageIds(cfg.syncQuery + ' ' + LABEL_QUERIES[label], cfg.maxMessages))),
+      );
+      for (const id of knownIds) {
         const pm = known.get(id)?.messages.find((x) => x.id === id);
-        if (pm) pm.labelIds = m.labelIds || [];
-      } catch {
-        /* label refresh is best effort */
+        if (!pm) continue;
+        const labels = new Set(pm.labelIds.filter((l) => !(l in LABEL_QUERIES)));
+        if (unread.has(id)) labels.add('UNREAD');
+        if (starred.has(id)) labels.add('STARRED');
+        if (inbox.has(id)) labels.add('INBOX');
+        pm.labelIds = Array.from(labels);
       }
-    },
-  );
+    } catch {
+      /* label refresh is best effort */
+    }
+  }
 
   await pooled(
     ids.filter((id) => !known.has(id) && !skipped.has(id)),

@@ -15,6 +15,22 @@ export interface GmailApi {
 }
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+/** Waits before retrying a rate-limited request; Gmail's per-user quota refills each minute. */
+const RETRY_MS = [2000, 5000, 10000];
+
+/** Google's own message from an error body, without the JSON around it. */
+export function googleError(status: number, text: string): string {
+  try {
+    const m = (JSON.parse(text) as { error?: { message?: string } }).error?.message;
+    if (m) return m;
+  } catch {
+    /* not JSON */
+  }
+  return text.slice(0, 200) || 'HTTP ' + status;
+}
+
+/** Too many requests: 429, or 403 with a rate-limit or quota reason. */
+export const isRateLimited = (status: number, text: string): boolean => status === 429 || (status === 403 && /rateLimitExceeded|quota exceeded/i.test(text));
 
 /** Returns a valid access token for the account, refreshing and persisting when needed. */
 export async function accessTokenFor(acct: StoredAccount): Promise<string> {
@@ -32,13 +48,20 @@ export class RealGmail implements GmailApi {
   constructor(private acct: StoredAccount) {}
 
   private async call<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = await accessTokenFor(this.acct);
-    const r = await fetch(BASE + path, { ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init.headers || {}) } });
-    if (!r.ok) {
+    for (let attempt = 0; ; attempt++) {
+      const token = await accessTokenFor(this.acct);
+      const r = await fetch(BASE + path, { ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init.headers || {}) } });
+      if (r.ok) return (await r.json()) as T;
       const text = await r.text().catch(() => '');
-      throw new Error('Gmail API ' + r.status + ' on ' + path + (text ? ': ' + text.slice(0, 300) : ''));
+      if (isRateLimited(r.status, text)) {
+        if (attempt < RETRY_MS.length) {
+          await new Promise((res) => setTimeout(res, RETRY_MS[attempt]));
+          continue;
+        }
+        throw new Error('Gmail is limiting how fast this app can read mail. Wait a minute, then sync again.');
+      }
+      throw new Error('Gmail API ' + r.status + ': ' + googleError(r.status, text));
     }
-    return (await r.json()) as T;
   }
 
   async listMessageIds(query: string, max: number): Promise<string[]> {
