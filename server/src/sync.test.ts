@@ -125,11 +125,27 @@ describe('sync → classify → derive with the mock Gmail', () => {
     const keep = process.env.GMAIL_MAX_MESSAGES;
     process.env.GMAIL_MAX_MESSAGES = '1';
     await sync.syncAccount(acct, api, NOW);
-    process.env.GMAIL_MAX_MESSAGES = keep;
+    if (keep === undefined) delete process.env.GMAIL_MAX_MESSAGES;
+    else process.env.GMAIL_MAX_MESSAGES = keep;
     const snap2 = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: await store.readMail(acct.id) }, NOW);
     const conv = snap2.emails.find((e) => e.id === acct.id + ':t-conv')!;
     expect(conv.thread.map((m) => [m.mine, m.addr])).toEqual([[true, 'jordan.lee@gmail.example'], [false, 'ana@hire.example']]);
     expect(conv.peers).toEqual(['ana@hire.example']);
     expect(out.peers).toEqual(['sam@corp.example']);
+  });
+
+  it('forgets mail moved to Trash or deleted for good in Gmail', async () => {
+    const ids = Object.keys((await store.readMail(acct.id)).threads);
+    expect(ids).toContain('t-news');
+    expect(ids).toContain('t-out');
+    api.messages.get('news')!.labelIds = ['TRASH'];
+    api.messages.delete('out');
+    const r = await sync.syncAccount(acct, api, NOW);
+    expect(r.removed).toBe(2);
+    const mail = await store.readMail(acct.id);
+    expect(mail.threads['t-news']).toBeUndefined();
+    expect(mail.threads['t-out']).toBeUndefined();
+    const snap = derive.buildSnapshot(await store.readAccounts(), { [acct.id]: mail }, NOW);
+    expect(snap.emails.some((e) => e.subject === 'Your weekly digest' || e.subject === 'Coffee next week?')).toBe(false);
   });
 });

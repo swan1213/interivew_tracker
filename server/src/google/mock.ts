@@ -7,7 +7,7 @@
 import { buildDemoData, DEMO_TODAY } from '../../../src/data/demo';
 import { b64url } from '../crypto';
 import type { GmailMessage, GmailPart } from '../mime';
-import type { GmailApi } from './gmail';
+import { GmailError, searchesBin, type GmailApi } from './gmail';
 import type { TokenSet, UserInfo } from './oauth';
 
 export const MOCK_USER: UserInfo = { email: 'jordan.lee@gmail.example', name: 'Jordan Lee' };
@@ -85,11 +85,16 @@ export class MockGmail implements GmailApi {
       .sort((a, b) => parseInt(a.internalDate || '0', 10) - parseInt(b.internalDate || '0', 10));
   }
 
-  /** Understands the label searches sync uses (is:unread, is:starred, in:inbox); other terms match everything. */
+  /**
+   * Understands the label searches sync uses (is:unread, is:starred, in:inbox) and the Trash/Spam search;
+   * other terms match everything. Like Gmail, Trash and Spam are left out unless searched for.
+   */
   async listMessages(query: string, max: number): Promise<{ id: string; threadId: string }[]> {
     const need = [['is:unread', 'UNREAD'], ['is:starred', 'STARRED'], ['in:inbox', 'INBOX']].filter(([q]) => query.split(' ').includes(q)).map(([, l]) => l);
+    const bin = searchesBin(query);
+    const inBin = (m: GmailMessage) => (m.labelIds || []).some((l) => l === 'TRASH' || l === 'SPAM');
     return Array.from(this.messages.values())
-      .filter((m) => need.every((l) => (m.labelIds || []).includes(l)))
+      .filter((m) => need.every((l) => (m.labelIds || []).includes(l)) && inBin(m) === bin)
       .sort((a, b) => parseInt(b.internalDate || '0', 10) - parseInt(a.internalDate || '0', 10))
       .slice(0, max)
       .map((m) => ({ id: m.id, threadId: m.threadId }));
@@ -97,7 +102,7 @@ export class MockGmail implements GmailApi {
 
   async getMessage(id: string): Promise<GmailMessage> {
     const m = this.messages.get(id);
-    if (!m) throw new Error('mock: no message ' + id);
+    if (!m) throw new GmailError(404, 'mock: no message ' + id);
     return m;
   }
 

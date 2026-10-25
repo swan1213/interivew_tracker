@@ -1,7 +1,7 @@
 import { classifyMessage, classifySent } from './classify';
 import { isJobRelated } from './classify/heuristic';
 import { cfg } from './config';
-import { gmailFor, type GmailApi } from './google/gmail';
+import { GmailError, gmailFor, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
 import { readAccounts, readMail, writeAccounts, writeMail } from './store';
 import type { StoredAccount, StoredThread } from './types';
@@ -25,7 +25,7 @@ const FETCH_WIDTH = 8;
 const CLASSIFY_WIDTH = 5;
 
 // One sync per account at a time: a second request (a click during an auto-sync) joins the running one.
-const running = new Map<string, Promise<{ newMessages: number }>>();
+const running = new Map<string, Promise<{ newMessages: number; removed: number }>>();
 // Accounts are synced in parallel; their lastSync writes to the shared accounts file are serialized.
 let accountsWrite: Promise<void> = Promise.resolve();
 
@@ -35,7 +35,7 @@ let accountsWrite: Promise<void> = Promise.resolve();
  * known messages get their labels (read, starred, archived) refreshed so the UI
  * mirrors Gmail.
  */
-export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number }> {
+export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number; removed: number }> {
   const inFlight = running.get(acct.id);
   if (inFlight) return inFlight;
   const p = syncAccountNow(acct, api, now).finally(() => running.delete(acct.id));
@@ -43,7 +43,7 @@ export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct),
   return p;
 }
 
-async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<{ newMessages: number }> {
+async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<{ newMessages: number; removed: number }> {
   const mail = await readMail(acct.id);
   const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
   const ids = listed.map((m) => m.id);
@@ -74,6 +74,8 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
       /* label refresh is best effort */
     }
   }
+
+  const removed = await dropDeleted(api, mail.threads, known, new Set(ids));
 
   // Fetch each conversation with something new in full, so its earlier messages come
   // along even when they are older than the newest GMAIL_MAX_MESSAGES.
@@ -121,7 +123,49 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   });
   accountsWrite = write.catch(() => undefined);
   await write;
-  return { newMessages: added };
+  return { newMessages: added, removed };
+}
+
+/** Unlisted messages checked one by one per sync, at most. */
+const VERIFY_MAX = 50;
+
+/**
+ * Forget mail deleted in Gmail. Trashed or spammed messages are found with one search;
+ * a stored message missing from the listing although newer than listed mail was deleted
+ * for good, which a lookup confirms (404). Threads left empty are removed. Returns the count.
+ */
+async function dropDeleted(api: GmailApi, threads: Record<string, StoredThread>, known: Map<string, StoredThread>, listed: Set<string>): Promise<number> {
+  const gone = new Set<string>();
+  try {
+    for (const id of await api.listMessageIds('in:trash OR in:spam', 500)) if (known.has(id)) gone.add(id);
+  } catch {
+    /* best effort; the next sync tries again */
+  }
+  // Mail older than the oldest listed message may simply be outside the sync window, so only newer mail is checked.
+  const listedDates = [...known.entries()].filter(([id]) => listed.has(id)).map(([id, t]) => t.messages.find((m) => m.id === id)!.date);
+  const floor = listedDates.length ? listedDates.reduce((a, b) => (a < b ? a : b)) : '';
+  if (floor) {
+    const unlisted = [...known.entries()]
+      .filter(([id]) => !listed.has(id) && !gone.has(id))
+      .map(([id, t]) => t.messages.find((m) => m.id === id)!)
+      .filter((m) => m.date > floor)
+      .slice(0, VERIFY_MAX);
+    await pooled(unlisted, FETCH_WIDTH, async (m) => {
+      try {
+        const g = await api.getMessage(m.id, 'minimal');
+        if ((g.labelIds || []).some((l) => l === 'TRASH' || l === 'SPAM')) gone.add(m.id);
+      } catch (e) {
+        if (e instanceof GmailError && e.status === 404) gone.add(m.id);
+      }
+    });
+  }
+  for (const id of gone) {
+    const t = known.get(id)!;
+    t.messages = t.messages.filter((m) => m.id !== id);
+    known.delete(id);
+    if (!t.messages.length) delete threads[t.id];
+  }
+  return gone.size;
 }
 
 /** Update stored labels right away so the next snapshot reflects a read/star/archive action. */

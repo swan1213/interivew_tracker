@@ -33,6 +33,16 @@ export function googleError(status: number, text: string): string {
   return text.slice(0, 200) || 'HTTP ' + status;
 }
 
+/** A failed Gmail request, with its HTTP status (404: the message or thread no longer exists). */
+export class GmailError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
+}
+
+/** Searches for Trash or Spam need includeSpamTrash, or Gmail leaves those messages out. */
+export const searchesBin = (query: string): boolean => /(^|[\s(])in:(trash|spam)\b/.test(query);
+
 /** Too many requests: 429, or 403 with a rate-limit or quota reason. */
 export const isRateLimited = (status: number, text: string): boolean => status === 429 || (status === 403 && /rateLimitExceeded|quota exceeded/i.test(text));
 
@@ -64,7 +74,7 @@ export class RealGmail implements GmailApi {
         }
         throw new Error('Gmail is limiting how fast this app can read mail. Wait a minute, then sync again.');
       }
-      throw new Error('Gmail API ' + r.status + ': ' + googleError(r.status, text));
+      throw new GmailError(r.status, 'Gmail API ' + r.status + ': ' + googleError(r.status, text));
     }
   }
 
@@ -73,6 +83,7 @@ export class RealGmail implements GmailApi {
     let pageToken = '';
     while (out.length < max) {
       const q = new URLSearchParams({ q: query, maxResults: String(Math.min(500, max - out.length)) });
+      if (searchesBin(query)) q.set('includeSpamTrash', 'true');
       if (pageToken) q.set('pageToken', pageToken);
       const j = await this.call<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>('/messages?' + q.toString());
       out.push(...(j.messages || []));
