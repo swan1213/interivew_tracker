@@ -9,7 +9,7 @@ import { runtime } from '@/data/runtime';
 import { authApi, toMember } from '@/data/apiProvider';
 import { CAT, DATA_KEY, DATA_VERSION, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, PREFS_KEY, stageLabel } from '@/data/constants';
 import { genText, type ReplyOpts } from '@/lib/reply';
-import { inView } from '@/lib/mail';
+import { forwardBlock, inView, isNoReply, replyRecipients, replySubject } from '@/lib/mail';
 import { activeEvents, conflictOf } from '@/lib/calendar';
 import { fmtT, lab, rel, tzOffset } from '@/lib/time';
 import { parseSlotKey, type SchedMode } from '@/lib/schedule';
@@ -67,8 +67,16 @@ export interface StateFields extends Data {
   compOpen: boolean;
   compMode: CompMode;
   compFrom: string;
+  compTo: string;
   compText: string;
   sendOpen: boolean;
+  // new message (not a reply)
+  newOpen: boolean;
+  newFrom: string;
+  newTo: string;
+  newSubject: string;
+  newBody: string;
+  newSending: boolean;
   // dialogs
   schedOpen: boolean;
   schedMode: SchedMode;
@@ -134,6 +142,9 @@ export interface Actions {
   askSend: () => void;
   closeSend: () => void;
   confirmSend: () => void;
+  openNew: (to?: string) => void;
+  closeNew: () => void;
+  sendNew: () => void;
   openSched: (mode: SchedMode) => void;
   closeSched: () => void;
   toggleSlot: (key: string) => void;
@@ -240,7 +251,8 @@ function initialFields(): StateFields {
     selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all',
     sortKey: 'newest', unreadOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
     tone: prefs.tone ?? 'professional', variant: 0, mods: NO_MODS, aiDraft: '', chosen: [],
-    compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compText: '', sendOpen: false,
+    compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compTo: '', compText: '', sendOpen: false,
+    newOpen: false, newFrom: '', newTo: '', newSubject: '', newBody: '', newSending: false,
     schedOpen: false, schedMode: 'avail', schedSel: [], addCalOpen: false, addCalEv: '', cfOpen: false, cf: NO_CF, addAcctOpen: false,
     toast: '', notifOpen: false, acMenuOpen: false, syncing: false,
     calView: route.calView ?? 'week', calDate: clock.today, calSel: '',
@@ -366,7 +378,7 @@ export const useStore = create<AppState>()((set, get) => {
     insertDraft: () => {
       const s = get();
       const e = emailOf(s, s.selId);
-      set({ compOpen: true, compMode: 'reply', compFrom: e ? e.acct : s.compFrom, compText: s.aiDraft });
+      set({ compOpen: true, compMode: 'reply', compFrom: e ? e.acct : s.compFrom, compTo: e ? e.fromAddr : s.compTo, compText: s.aiDraft });
       showToast('Inserted into the composer. Review before sending.');
     },
 
@@ -375,29 +387,50 @@ export const useStore = create<AppState>()((set, get) => {
       const s = get();
       const e = emailOf(s, s.selId);
       if (!e) return;
-      if (!e.canReply && mode !== 'forward') {
+      if (mode !== 'forward' && isNoReply(e.fromAddr)) {
         showToast('This is a no-reply address. Replies are not monitored.');
         return;
       }
-      set({ compOpen: true, compMode: mode, compFrom: e.acct, compText: mode === 'forward' ? '' : s.compText || s.aiDraft || '' });
+      const me = acctOf(s, e.acct)?.addr || '';
+      const fwd = mode === 'forward';
+      set({
+        compOpen: true, compMode: mode, compFrom: e.acct,
+        compTo: fwd ? '' : replyRecipients(e, mode === 'replyall', me),
+        compText: fwd ? forwardBlock(e) : s.compMode === 'forward' ? '' : s.compText || s.aiDraft || '',
+      });
     },
-    closeComp: () => set({ compOpen: false, compText: '' }),
+    closeComp: () => set({ compOpen: false, compTo: '', compText: '' }),
     askSend: () => set({ sendOpen: true }),
     closeSend: () => set({ sendOpen: false }),
     confirmSend: () => {
       const s = get();
       const e = emailOf(s, s.selId);
       if (!e || !s.compText.trim()) return;
+      // A reply with the To field left empty goes back to the sender.
+      const to = s.compTo.trim() || (s.compMode === 'forward' ? '' : e.fromAddr);
+      if (!to) {
+        set({ sendOpen: false });
+        showToast('Add a recipient first.');
+        return;
+      }
       const ac = acctOf(s, s.compFrom);
       const co = e.company;
-      const subject = (s.compMode === 'forward' ? 'Fwd: ' : 'Re: ') + e.subject.replace(/^Re:\s*/, '');
+      const fwd = s.compMode === 'forward';
+      const subject = replySubject(e.subject, fwd);
       provider
-        .send({ accountId: ac.id, from: ac.addr, to: e.fromAddr, subject, body: s.compText, inReplyTo: e.id, mode: s.compMode })
+        .send({ accountId: ac.id, from: ac.addr, to, subject, body: s.compText, inReplyTo: e.id, mode: s.compMode })
         .then(() => {
           if (!provider.isDemo) void get().hydrate();
         })
         .catch((err: Error) => showToast('Sending failed: ' + err.message));
 
+      // A forward starts a new conversation with someone else: this one is not answered by it.
+      if (fwd) {
+        set({ sendOpen: false, compOpen: false, compTo: '', compText: '' });
+        addAct('You forwarded "' + e.subject + '" to ' + to, 'cat-sent');
+        showToast('Forwarded to ' + to + ' from ' + ac.addr + '.' + (provider.isDemo ? ' Demo only, nothing was delivered.' : ''));
+        return;
+      }
       const msg: ThreadMsg = { from: 'You (' + s.S.name + ')', addr: ac.addr, when: 'Just now', body: s.compText, mine: true, atts: [] };
       let toast = 'Reply sent from ' + ac.addr + '.' + (provider.isDemo ? ' Demo only, nothing was delivered.' : '');
       const patch: Partial<Email> = { thread: e.thread.concat([msg]), done: true, replied: true };
@@ -426,6 +459,35 @@ export const useStore = create<AppState>()((set, get) => {
       showToast(toast);
     },
 
+    openNew: (to = '') => {
+      const s = get();
+      // Write from the account being viewed, else the last one used for a reply.
+      const from = s.acctFilter !== 'all' ? s.acctFilter : s.newFrom || s.compFrom || s.accts[0]?.id || '';
+      set({ newOpen: true, newFrom: from, newTo: to || (s.newOpen ? s.newTo : ''), ...(s.newOpen ? {} : { newSubject: '', newBody: '' }) });
+    },
+    closeNew: () => set({ newOpen: false, newTo: '', newSubject: '', newBody: '', newSending: false }),
+    sendNew: () => {
+      const s = get();
+      const ac = s.accts.find((a) => a.id === s.newFrom);
+      if (!ac) return showToast('Pick the account to send from.');
+      if (!s.newTo.trim()) return showToast('Add a recipient.');
+      if (!s.newBody.trim()) return showToast('Write a message first.');
+      set({ newSending: true });
+      provider
+        .send({ accountId: ac.id, from: ac.addr, to: s.newTo, subject: s.newSubject, body: s.newBody })
+        .then(() => {
+          get().closeNew();
+          addAct('You emailed ' + s.newTo, 'cat-sent');
+          showToast('Sent from ' + ac.addr + ' to ' + s.newTo + '.' + (provider.isDemo ? ' Demo only, nothing was delivered.' : ''));
+          // Pull the sent message (and, for a connected recipient, the delivered copy) into the inbox.
+          if (!provider.isDemo) void get().autoSync();
+        })
+        .catch((err: Error) => {
+          set({ newSending: false });
+          showToast('Sending failed: ' + err.message);
+        });
+    },
+
     // ---- scheduling dialog ----
     openSched: (mode) => set({ schedOpen: true, schedMode: mode, schedSel: [] }),
     closeSched: () => set({ schedOpen: false }),
@@ -446,7 +508,7 @@ export const useStore = create<AppState>()((set, get) => {
       const e = emailOf(s, s.selId);
       const chosen: Slot[] = s.schedSel.map(parseSlotKey).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
       const text = draftFor(s, { chosen, variant: 0, mods: NO_MODS });
-      set({ schedOpen: false, chosen, compOpen: true, compMode: 'reply', compFrom: e ? e.acct : s.compFrom, compText: text, aiDraft: text, variant: 0, mods: NO_MODS });
+      set({ schedOpen: false, chosen, compOpen: true, compMode: 'reply', compFrom: e ? e.acct : s.compFrom, compTo: e ? e.fromAddr : s.compTo, compText: text, aiDraft: text, variant: 0, mods: NO_MODS });
       showToast('Reply drafted. Review it, then send. Nothing is confirmed yet.');
     },
 

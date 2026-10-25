@@ -105,3 +105,31 @@ export function firstLink(body: string): string | null {
   const m = body.match(/https?:\/\/\S+|\b[\w.-]+\.(?:example|com|io|net|org)\/\S+/);
   return m ? m[0].replace(/[).,]+$/, '') : null;
 }
+
+/** Automated senders nobody reads replies to. */
+export const isNoReply = (addr: string): boolean => /no-?reply|do-?not-?reply|^notifications?@|^alerts?@|mailer-daemon|^news(letter)?@|^updates?@/i.test(addr);
+
+/** Subject for a reply or forward, without stacking "Re: Re:" or "Fwd: Re:". */
+export const replySubject = (subject: string, forward: boolean): string => (forward ? 'Fwd: ' : 'Re: ') + subject.replace(/^((re|fwd?):\s*)+/i, '');
+
+/** Who a reply goes to: the sender, or with reply all everyone else on the conversation. */
+export function replyRecipients(e: Email, all: boolean, me: string): string {
+  const sender = e.fromAddr.toLowerCase();
+  if (!all) return sender;
+  return [sender, ...(e.peers || [])].filter((x, i, a) => x && x !== me.toLowerCase() && a.indexOf(x) === i).join(', ');
+}
+
+/** The original message below a forward, the way mail clients quote it. */
+export function forwardBlock(e: Email): string {
+  const m = e.thread[e.thread.length - 1];
+  return [
+    '',
+    '',
+    '---------- Forwarded message ---------',
+    'From: ' + (m ? m.from + ' <' + m.addr + '>' : e.fromName + ' <' + e.fromAddr + '>'),
+    'Date: ' + (m ? m.when : e.time),
+    'Subject: ' + e.subject,
+    '',
+    m ? m.body : e.body,
+  ].join('\n');
+}

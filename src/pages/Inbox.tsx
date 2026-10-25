@@ -4,7 +4,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, SAVED_FILTERS, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email } from '@/data/types';
-import { companyLine, effCat, filterEmails, firstLink, needsAction, previewOf } from '@/lib/mail';
+import { companyLine, effCat, filterEmails, firstLink, needsAction, previewOf, replySubject } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { cx, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -36,6 +36,10 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
         <h1>
           {title} <span className="cnt">{rows.length}</span>
           <span className="sp" />
+          <button type="button" className="btn pri sm" onClick={() => st.openNew()}>
+            <Icon name="plus" sm />
+            Compose
+          </button>
           {st.peer && (
             <button type="button" className="btn ghost sm" onClick={() => st.showPeer('')} aria-label="Show everyone's mail">
               <Icon name="x" sm />
@@ -596,9 +600,9 @@ function ReplyAssistant({ e }: { e: Email }) {
 function Composer({ e }: { e: Email }) {
   const st = useStore();
   const fwd = st.compMode === 'forward';
-  const to = fwd ? 'Add recipients…' : e.fromName + ' <' + e.fromAddr + '>';
-  const subject = (fwd ? 'Fwd: ' : 'Re: ') + e.subject.replace(/^Re:\s*/, '');
+  const subject = replySubject(e.subject, fwd);
   const modeLabel = st.compMode === 'replyall' ? 'Reply all' : fwd ? 'Forward' : 'Reply';
+  const people = Array.from(new Set(st.accts.map((a) => a.addr).concat(st.emails.flatMap((x) => x.peers || []))));
   return (
     <section className="comp" aria-label="Composer">
       <div className="cr">
@@ -610,11 +614,25 @@ function Composer({ e }: { e: Email }) {
             </option>
           ))}
         </select>
-        <span className="mut">Thread preserved · In-Reply-To set</span>
+        <span className="mut">{fwd ? 'Sent as a new conversation with the original quoted' : 'Stays in this conversation'}</span>
       </div>
       <div className="cr">
         <span className="k">To</span>
-        <b style={{ fontWeight: 550 }}>{to}</b>
+        <input
+          className="cto"
+          type="text"
+          list="comp-people"
+          value={st.compTo}
+          onChange={(ev) => st.patch({ compTo: ev.target.value })}
+          placeholder="name@example.com, separate several with commas"
+          aria-label="Recipients"
+          autoFocus={fwd}
+        />
+        <datalist id="comp-people">
+          {people.map((x) => (
+            <option key={x} value={x} />
+          ))}
+        </datalist>
         <span className="tag">{modeLabel}</span>
       </div>
       <div className="cr">
@@ -625,8 +643,12 @@ function Composer({ e }: { e: Email }) {
         aria-label="Message body"
         value={st.compText}
         onChange={(ev) => st.patch({ compText: ev.target.value })}
-        placeholder="Write your reply, or generate one above. You review everything before it sends."
-        autoFocus
+        placeholder={fwd ? 'Add a note above the forwarded message' : 'Write your reply, or generate one above. You review everything before it sends.'}
+        autoFocus={!fwd}
+        ref={(el) => {
+          // Start typing above the quoted original when forwarding.
+          if (el && fwd && document.activeElement !== el && el.selectionStart === el.value.length) el.setSelectionRange(0, 0);
+        }}
       />
       <div className="cr" style={{ borderTop: '1px solid var(--bd)', borderBottom: 0 }}>
         <button type="button" className="btn pri" onClick={st.askSend}>
