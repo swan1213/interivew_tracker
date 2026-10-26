@@ -11,18 +11,33 @@ export function busyAt(active: CalEvent[], date: string, s: number, e: number, e
   return active.find((v) => v.added !== false && v.id !== excl && v.date === date && s < v.end && v.start < e) || null;
 }
 
-/** Another active event that overlaps `v` where at least one side is an interview. */
+/** An interview: one made in the app, or a synced calendar event whose title says it is one. */
+export const isInterview = (v: CalEvent): boolean => v.kind === 'interview' || looksLikeInterview(v.co);
+
+/** Every other active event that overlaps `v` where at least one side is an interview, earliest first. */
+export function conflictsOf(v: CalEvent, active: CalEvent[]): CalEvent[] {
+  if (!v.added) return [];
+  return active
+    .filter((o) => o.added && o.id !== v.id && o.date === v.date && v.start < o.end && o.start < v.end && (isInterview(v) || isInterview(o)))
+    .sort((a, b) => a.start - b.start);
+}
+
 export function conflictOf(v: CalEvent, active: CalEvent[]): CalEvent | null {
-  if (!v.added) return null;
-  return (
-    active.find(
-      (o) => o.added && o.id !== v.id && o.date === v.date && v.start < o.end && o.start < v.end && (v.kind === 'interview' || o.kind === 'interview'),
-    ) || null
-  );
+  return conflictsOf(v, active)[0] || null;
 }
 
 export function conflictCount(active: CalEvent[]): number {
-  return active.filter((x) => x.kind === 'interview' && conflictOf(x, active)).length;
+  return active.filter((x) => isInterview(x) && conflictOf(x, active)).length;
+}
+
+/** Each clashing pair once, in date and time order. */
+export function conflictPairs(active: CalEvent[]): [CalEvent, CalEvent][] {
+  const out: [CalEvent, CalEvent][] = [];
+  const sorted = [...active].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  sorted.forEach((v, i) => {
+    for (const o of conflictsOf(v, active)) if (sorted.indexOf(o) > i) out.push([v, o]);
+  });
+  return out;
 }
 
 export interface Lane {

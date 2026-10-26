@@ -3,7 +3,7 @@ import { drag, useStore } from '@/store/store';
 import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
 import type { Account, CalEvent, CalView } from '@/data/types';
-import { activeEvents, conflictCount, conflictOf, layoutLanes, type Lane } from '@/lib/calendar';
+import { activeEvents, conflictPairs, conflictsOf, isInterview, layoutLanes, type Lane } from '@/lib/calendar';
 import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -98,7 +98,8 @@ export function CalendarPage() {
   };
 
   const selected = st.calSel ? active.find((x) => x.id === st.calSel) : undefined;
-  const ncf = conflictCount(active);
+  const clashes = conflictPairs(active).filter(([a, b]) => a.date >= st.today || b.date >= st.today);
+  const show = (v: CalEvent) => st.patch({ calSel: v.id, calDate: v.date, calView: view === 'month' || view === 'agenda' ? 'week' : view });
   const availText = S.whDays.slice().sort().map((d) => DN[d]).join(', ') + ' · ' + fmtT(ws + off) + ' to ' + fmtT(we + off) + ' ' + S.tz;
 
   return (
@@ -164,9 +165,31 @@ export function CalendarPage() {
             <b style={{ fontWeight: 600 }}>{availText}</b>
             <div className="mut">Shaded green in Week and Day. Slot suggestions respect this window and existing events.</div>
           </div>
-          <div className="card" style={{ padding: 12 }}>
+          <div className={cx('card', clashes.length > 0 && 'cfcard')} style={{ padding: 12 }}>
             <span className="fl">Conflict check</span>
-            <b style={{ fontWeight: 600 }}>{ncf ? ncf + ' interview' + (ncf > 1 ? 's' : '') + ' overlap another event' : 'No conflicts across your calendars'}</b>
+            <b style={{ fontWeight: 600 }}>
+              {clashes.length ? clashes.length + ' upcoming clash' + (clashes.length > 1 ? 'es' : '') + ' with an interview' : 'No conflicts across your calendars'}
+            </b>
+            {clashes.length > 0 && (
+              <ul className="cflist">
+                {clashes.map(([a, b]) => (
+                  <li key={a.id + '|' + b.id}>
+                    <span className="mini">
+                      {rel(a.date, st.today)} · {fmtT(Math.max(a.start, b.start) + off)}
+                    </span>
+                    <span className="ln wrap" style={{ gap: 4 }}>
+                      <button type="button" className="lnk" onClick={() => show(a)}>
+                        {a.co}
+                      </button>
+                      <span className="mut">overlaps</span>
+                      <button type="button" className="lnk" onClick={() => show(b)}>
+                        {b.co}
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </aside>
       </div>
@@ -247,7 +270,7 @@ function EventBlock({ v, active, lane }: { v: CalEvent; active: CalEvent[]; lane
   const st = useStore();
   const off = tzOffset(st.S.tz);
   const isIv = v.kind === 'interview';
-  const c = isIv ? conflictOf(v, active) : null;
+  const c = conflictsOf(v, active)[0];
   const h = Math.max(22, (v.end - v.start) * HOUR_PX - 2);
   const sel = st.calSel === v.id;
   const cols = lane?.lanes || 1;
@@ -259,7 +282,7 @@ function EventBlock({ v, active, lane }: { v: CalEvent; active: CalEvent[]; lane
       type="button"
       className={cx('ev', STG[v.stage].cls, !isIv && 'busy', sel && 'sel3', c && 'cf')}
       style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h, ...place, ...accent(acctOf(st.accts, v), sel) }}
-      title={v.co + (v.role ? ' · ' + v.role : '') + '\n' + when + (v.platform ? '\n' + v.platform : '')}
+      title={v.co + (v.role ? ' · ' + v.role : '') + '\n' + when + (v.platform ? '\n' + v.platform : '') + (c ? '\nConflicts with ' + c.co : '')}
       onClick={() => st.patch({ calSel: v.id })}
       draggable={isIv}
       onDragStart={(e) => {
@@ -328,7 +351,7 @@ function Agenda({ active }: { active: CalEvent[] }) {
             <h3>{r + (r === lab(dt) ? '' : ' · ' + lab(dt))}</h3>
             {es.map((v) => {
               const isIv = v.kind === 'interview';
-              const conflict = isIv && !!conflictOf(v, active);
+              const conflict = conflictsOf(v, active).length > 0;
               const a = acctOf(st.accts, v);
               const where = [v.platform, v.location && v.location !== v.link ? v.location : ''].filter(Boolean).join(' · ');
               return (
@@ -365,7 +388,8 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
   const st = useStore();
   const S = st.S;
   const off = tzOffset(S.tz);
-  const c = conflictOf(v, active);
+  const clashes = conflictsOf(v, active);
+  const c = clashes[0];
   const isIv = v.kind === 'interview';
   const remDefs: [number, string][] = [
     [1440, '24 hours'],
@@ -422,8 +446,27 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
         )}
       </div>
       {c && (
-        <div className="act" style={{ fontSize: 12 }}>
-          This overlaps with {c.co}. Move one of them or reschedule.
+        <div className="act cfbox" style={{ fontSize: 12 }}>
+          <b>{isInterview(v) ? 'This interview' : 'This event'} overlaps {clashes.length === 1 ? 'another event' : clashes.length + ' other events'}:</b>
+          {clashes.map((o) => (
+            <button key={o.id} type="button" className="lnk" onClick={() => st.patch({ calSel: o.id })}>
+              {o.co} · {fmtT(o.start + off)} to {fmtT(o.end + off)}
+              {isInterview(o) ? ' (interview)' : ''}
+            </button>
+          ))}
+          <span>
+            {isIv
+              ? 'Drag it to a free slot, or use the email to ask the recruiter for another time.'
+              : v.htmlLink
+                ? 'Move or decline one of them in Google Calendar.'
+                : 'Move one of them or ask for another time.'}
+          </span>
+          {linkedEmail && (
+            <button type="button" className="btn sm" onClick={() => st.openEmail(linkedEmail.id)}>
+              <Icon name="mail" sm />
+              Open the email
+            </button>
+          )}
         </div>
       )}
       {!isIv && v.notes && (

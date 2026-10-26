@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CalEvent } from '@/data/types';
-import { layoutLanes } from './calendar';
+import { conflictPairs, conflictsOf, layoutLanes } from './calendar';
 
 const ev = (id: string, start: number, end: number): CalEvent => ({ id, kind: 'interview', co: id, role: '', stage: 'screen', date: '2026-10-27', start, end, added: true });
 const lanes = (m: Map<string, { lane: number; lanes: number }>) => Object.fromEntries([...m].map(([id, l]) => [id, l.lane + '/' + l.lanes]));
@@ -18,5 +18,29 @@ describe('side-by-side lanes for overlapping events', () => {
   it('treats short events by their drawn height', () => {
     expect(lanes(layoutLanes([ev('a', 10, 10.1), ev('b', 10.2, 10.5)]))).toEqual({ a: '0/1', b: '0/1' });
     expect(lanes(layoutLanes([ev('a', 10, 10.1), ev('b', 10.2, 10.5)], 0.5))).toEqual({ a: '0/2', b: '1/2' });
+  });
+});
+
+describe('interview conflicts', () => {
+  const busy = (id: string, co: string, start: number, end: number): CalEvent => ({ ...ev(id, start, end), kind: 'busy', co, stage: 'busy' });
+
+  it('flags two synced Google Calendar interviews at the same time', () => {
+    const a = busy('g1', 'Luma | Interview - Joshua Shin', 22, 22.5);
+    const b = busy('g2', 'Acme technical interview', 22, 23);
+    expect(conflictsOf(a, [a, b]).map((x) => x.id)).toEqual(['g2']);
+    expect(conflictPairs([a, b]).map(([x, y]) => x.id + '+' + y.id)).toEqual(['g1+g2']);
+  });
+
+  it('ignores overlaps between ordinary commitments and events not on the calendar', () => {
+    const lunch = busy('l', 'Lunch with Sam', 12, 13);
+    const gym = busy('g', 'Gym', 12, 13);
+    const pending = { ...ev('p', 12, 13), added: false };
+    expect(conflictPairs([lunch, gym, pending])).toEqual([]);
+  });
+
+  it('lists every event an interview overlaps', () => {
+    const iv = ev('iv', 10, 12);
+    const out = conflictsOf(iv, [iv, busy('d', 'Dentist', 11, 12), busy('s', 'Recruiter screen', 10, 10.5)]);
+    expect(out.map((x) => x.id)).toEqual(['s', 'd']);
   });
 });
