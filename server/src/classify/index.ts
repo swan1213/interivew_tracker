@@ -30,13 +30,31 @@ export async function classifyMessage(head: ParsedMessage, thread: ParsedMessage
   const rules = classifyHeuristic(head, now);
   // Phrases like "please confirm" or "when are you free" also appear in ordinary mail; only job mail gets job categories.
   if (!rules.jobRelated && !thread.some((m) => isJobRelated(m))) return classifyOther(rules);
-  if (!allowModel || !cfg.anthropicKey || cfg.mock) return rules;
+  if (!allowModel || !cfg.anthropicKey || cfg.mock) return noReplyScheduling(rules);
   try {
-    return await classifyWithClaude(head, thread, rules, now);
+    return noReplyScheduling(await classifyWithClaude(head, thread, rules, now));
   } catch (e) {
     console.warn('[classify] model call failed, using rules:', (e as Error).message);
-    return rules;
+    return noReplyScheduling(rules);
   }
+}
+
+/**
+ * Nobody reads replies to a no-reply address, so it can't be answered with times: scheduling
+ * there goes through a booking link. No "reply with your availability" flow for those.
+ */
+export function noReplyScheduling(c: Classification): Classification {
+  if (c.canReply || (c.mode !== 'avail' && c.mode !== 'resched')) return c;
+  return {
+    ...c,
+    mode: undefined,
+    need: undefined,
+    slotLen: undefined,
+    windowDates: undefined,
+    opts: undefined,
+    action: c.link ? 'Book a time using the scheduling link in the email' : 'Follow the scheduling instructions in the email',
+    replyKind: 'No-reply sender',
+  };
 }
 
 /** Whether classifyMessage would ask the model about this thread (job mail, with a key configured). */

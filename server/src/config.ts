@@ -53,6 +53,24 @@ export const cfg = {
   get redirectUri(): string {
     return cfg.appUrl + '/api/auth/google/callback';
   },
+  /** Microsoft app registration (Microsoft Entra ID), for connecting Outlook.com and Microsoft 365 mailboxes. */
+  get msClientId(): string {
+    return process.env.MICROSOFT_CLIENT_ID || '';
+  },
+  get msClientSecret(): string {
+    return process.env.MICROSOFT_CLIENT_SECRET || '';
+  },
+  /** 'common' accepts personal Microsoft accounts and work or school accounts. */
+  get msTenant(): string {
+    return process.env.MICROSOFT_TENANT || 'common';
+  },
+  get msRedirectUri(): string {
+    return cfg.appUrl + '/api/auth/microsoft/callback';
+  },
+  /** Outlook mailboxes can be connected (credentials set, or mock mode). */
+  get msConfigured(): boolean {
+    return cfg.mock || (!!cfg.msClientId && !!cfg.msClientSecret);
+  },
   get anthropicKey(): string {
     return process.env.ANTHROPIC_API_KEY || '';
   },

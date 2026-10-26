@@ -138,7 +138,7 @@ export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
     id: 'gcal-' + acct.id + '-' + g.id,
     kind: 'busy',
     co: g.summary || 'Busy',
-    role: 'Google Calendar',
+    role: acct.provider === 'Outlook' ? 'Outlook Calendar' : 'Google Calendar',
     stage: 'busy',
     date: s.date,
     start: s.hour,

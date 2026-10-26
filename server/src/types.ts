@@ -5,7 +5,7 @@ export interface StoredAccount {
   id: string;
   email: string;
   name: string;
-  provider: 'Gmail';
+  provider: 'Gmail' | 'Outlook';
   color: string;
   initial: string;
   refreshToken: string;

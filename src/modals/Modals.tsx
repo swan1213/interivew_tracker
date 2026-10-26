@@ -223,17 +223,27 @@ function AddAccountModal() {
                 <span>Gmail / Google Workspace · read, label and send on approval</span>
               </span>
             </button>
-            <div className="acitem" style={{ ...item, borderStyle: 'dashed', opacity: 0.7 }} aria-disabled="true">
-              <AcDot color="#0F7C8C" initial="O" />
-              <span className="acmeta">
-                <b>Outlook / Microsoft 365</b>
-                <span>Not set up yet</span>
-              </span>
-            </div>
+            {runtime.outlook ? (
+              <button type="button" className="acitem" style={item} onClick={() => st.addAccount('Outlook')}>
+                <AcDot color="#0F7C8C" initial="O" />
+                <span className="acmeta">
+                  <b>Continue with Microsoft</b>
+                  <span>Outlook.com / Microsoft 365 · read, label and send on approval</span>
+                </span>
+              </button>
+            ) : (
+              <div className="acitem" style={{ ...item, borderStyle: 'dashed', opacity: 0.7 }} aria-disabled="true">
+                <AcDot color="#0F7C8C" initial="O" />
+                <span className="acmeta">
+                  <b>Outlook / Microsoft 365</b>
+                  <span>Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET on the server to enable</span>
+                </span>
+              </div>
+            )}
             <div className="mut">
               {runtime.mock
-                ? 'Mock Google is active: sign-in completes instantly with a demo mailbox.'
-                : "You'll be sent to Google to approve access, then back here. Tokens stay on the server. Only mail that looks job-related is kept, and nothing is sent without your click."}
+                ? 'Mock sign-in is active: connecting completes instantly with a demo mailbox.'
+                : "You'll be sent to Google or Microsoft to approve access, then back here. Tokens stay on the server, and nothing is sent without your click."}
             </div>
           </>
         ) : (

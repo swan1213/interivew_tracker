@@ -9,13 +9,16 @@ import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, Empty, Fact, Seg } from '@/ui/bits';
 
+/** The calendar service behind a mailbox. */
+const calName = (a: Account | undefined): string => (a?.provider === 'Outlook' ? 'Outlook Calendar' : 'Google Calendar');
+
 /** Calendars shown in the header, one per mailbox in its color; the demo shows its fictional ones. */
 function calendarSources(accts: Account[]): { label: string; color: string; title: string }[] {
   if (provider.isDemo) return ['Google Calendar synced', 'Microsoft Calendar synced'].map((label) => ({ label, color: 'var(--ok)', title: label }));
   return accts.map((a) =>
     a.calendar
-      ? { label: a.addr, color: a.color, title: 'Google Calendar synced for ' + a.addr }
-      : { label: a.addr + ' · reconnect for calendar', color: 'var(--warn)', title: 'Connect ' + a.addr + ' again and allow Google Calendar access' },
+      ? { label: a.addr, color: a.color, title: calName(a) + ' synced for ' + a.addr }
+      : { label: a.addr + ' · reconnect for calendar', color: 'var(--warn)', title: 'Connect ' + a.addr + ' again and allow ' + calName(a) + ' access' },
   );
 }
 
@@ -443,7 +446,7 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
             <Fact label="Interviewer">{v.interviewer}</Fact>
             <Fact label="Platform">{v.platform}</Fact>
             <Fact label="Meeting link">{v.link ? <LinkOut url={v.link} /> : 'Not stated'}</Fact>
-            <Fact label="Synced to">{provider.isDemo ? 'Google Calendar and Microsoft Calendar' : v.added && st.accts.some((a) => a.calendar) ? 'Google Calendar' : 'Not synced'}</Fact>
+            <Fact label="Synced to">{provider.isDemo ? 'Google Calendar and Microsoft Calendar' : v.added && st.accts.some((x) => x.calendar) ? calName(a) : 'Not synced'}</Fact>
           </>
         )}
       </div>
@@ -460,7 +463,7 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
             {isIv
               ? 'Drag it to a free slot, or use the email to ask the recruiter for another time.'
               : v.htmlLink
-                ? 'Move or decline one of them in Google Calendar.'
+                ? 'Move or decline one of them in ' + calName(a) + '.'
                 : 'Move one of them or ask for another time.'}
           </span>
           {linkedEmail && (
@@ -488,7 +491,7 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
           )}
           {v.htmlLink && (
             <a className="btn sm" href={v.htmlLink} target="_blank" rel="noopener noreferrer">
-              Open in Google Calendar
+              Open in {calName(a)}
             </a>
           )}
         </div>

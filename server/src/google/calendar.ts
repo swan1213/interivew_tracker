@@ -1,6 +1,7 @@
 import { cfg } from '../config';
 import type { StoredAccount } from '../types';
 import { accessTokenFor } from './gmail';
+import { OutlookCalendar } from '../microsoft/calendar';
 import { CALENDAR_SCOPE } from './oauth';
 
 /** The subset of a Google Calendar event the app reads and writes. */
@@ -134,9 +135,10 @@ export class MockCalendar implements CalendarApi {
 }
 
 /** Accounts connected before calendar sync existed lack the scope until they connect again. */
-export const hasCalendar = (acct: StoredAccount): boolean => cfg.mock || acct.scopes.includes(CALENDAR_SCOPE);
+export const hasCalendar = (acct: StoredAccount): boolean =>
+  cfg.mock || (acct.provider === 'Outlook' ? acct.scopes.some((s) => /(^|\/)Calendars\.ReadWrite$/i.test(s)) : acct.scopes.includes(CALENDAR_SCOPE));
 
 export function calendarFor(acct: StoredAccount): CalendarApi {
   if (cfg.mock) return MockCalendar.for(acct.id);
-  return new RealCalendar(acct);
+  return acct.provider === 'Outlook' ? new OutlookCalendar(acct) : new RealCalendar(acct);
 }

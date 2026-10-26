@@ -210,6 +210,18 @@ describe('calendar API', () => {
     expect((await (await req('/snapshot')).json()).snapshot.calRemoved).toEqual([]);
   });
 
+  it('connects an Outlook mailbox through Microsoft sign-in, with its calendar', async () => {
+    expect((await (await req('/health')).json()).outlook).toBe(true);
+    const start = await req('/auth/microsoft/start');
+    const back = await req(start.headers.get('location')!.replace(/^\/api/, ''));
+    expect(back.headers.get('location')).toMatch(/\/accounts\?connected=o-/);
+    const { readAccounts } = await import('./store');
+    const o = (await readAccounts()).find((a) => a.provider === 'Outlook')!;
+    expect(o.email).toBe('jordan.lee@outlook.example');
+    const snap = (await (await req('/snapshot')).json()).snapshot;
+    expect(snap.accts.find((a: { id: string }) => a.id === o.id)).toMatchObject({ label: 'Jordan Lee · Outlook', provider: 'Outlook', calendar: true });
+  });
+
   it('keeps guests out', async () => {
     await req('/team', 'POST', { name: 'Gail', email: 'guest@example.com', role: 'guest' });
     const g = await fetch(base + '/auth/login?as=guest%40example.com', { redirect: 'manual' });

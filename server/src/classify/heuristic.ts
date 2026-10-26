@@ -10,7 +10,12 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 3;
+export const RULES_VERSION = 4;
+
+/** Subjects of application receipts ("Thanks for applying to X", "Application received"). */
+const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your interest|submitting)|application (received|submitted|confirmation|complete)|we('ve| have) received your application|your application (to|for|at|with|has been|was))\b/i;
+/** Subjects that do ask to schedule, even when they also thank you for applying. */
+const SCHEDULING_SUBJECT = /\b(interview|schedul\w*|availability|invitation|invite|next steps?|call|chat|meet)\b/i;
 
 /** Sentences that mention an offer without making one: scam warnings and conditions. */
 const OFFER_HEDGE = /\b(fraud\w*|scam\w*|phishing|suspicious|falsely|impersonat\w*|never|beware|caution\w*|if|once|before|may|might|whether|should you)\b/i;
@@ -207,6 +212,13 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   let mode: EmailMode | undefined;
   if (offerHit) { cat = 'offer'; conf = 92; }
   else if (rejectHit && !confirmedHit) { cat = 'rejected'; conf = 88; }
+  // An application receipt often carries a copy of the form or résumé ("available from...", "when would you
+  // start"), which reads like a scheduling request. Its subject says what it is; an assessment still counts.
+  // A person writing "Thanks for applying, when are you free?" is still asking.
+  else if (RECEIPT_SUBJECT.test(p.subject) && !SCHEDULING_SUBJECT.test(p.subject) && (noReply || !(availHit || inviteHit))) {
+    if (assessHit) { cat = 'action'; conf = 84; mode = 'assess'; }
+    else { cat = statusHit && !appliedHit ? 'status' : 'applied'; conf = 92; }
+  }
   else if (reschedHit && (availHit || inviteHit || confirmedHit || actionHit || /\b(interview|call)\b/i.test(text))) { cat = 'action'; sec = 'avail'; conf = 90; mode = 'resched'; }
   else if (confirmedHit && !availHit) { cat = 'confirmed'; conf = 90; }
   else if (availHit || inviteHit) {

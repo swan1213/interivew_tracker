@@ -185,3 +185,37 @@ describe('receipts that describe the hiring process', () => {
     expect(classifyHeuristic(pm('Your offer', 'We are pleased to offer you the Software Engineer position. Your offer letter is attached.'), NOW).cat).toBe('offer');
   });
 });
+
+describe('application receipts and no-reply scheduling', () => {
+  const msg = (fromAddr: string, subject: string, bodyText: string): ParsedMessage => ({
+    id: 'r', threadId: 'tr', fromName: 'Workable', fromAddr, to: 'me@gmail.com', subject, date: '2026-09-29T17:45:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+
+  it('a receipt carrying a copy of the application form is not a scheduling request', async () => {
+    const { noReplyScheduling } = await import('./index');
+    const form =
+      'Whitespace\n\nYour application for the Software Engineer job was submitted successfully. Here is a copy of your application data.\n\n' +
+      '** PERSONAL INFORMATION **\nName: Joshua Shin\n\nWhen would you be available to start? Available within 2 weeks.\n' +
+      'Preferred interview times: weekdays after 2 PM, any day next week.\n2023 - 2026 Senior Software Developer at Five Rings';
+    const c = noReplyScheduling(classifyHeuristic(msg('noreply@candidates.workablemail.com', 'Thanks for applying to Whitespace', form), NOW));
+    expect(c.cat).toBe('applied');
+    expect(c.mode).toBeUndefined();
+    expect(c.needs).toBe(false);
+  });
+
+  it('a recruiter who thanks you for applying and asks for times is still asking', () => {
+    const c = classifyHeuristic(msg('dana@acme.example', 'Thanks for applying to Acme', 'Hi Joshua, thanks for applying! Could you share a few times that work for a 30-minute call next week?'), NOW);
+    expect(c.cat).toBe('avail');
+    expect(c.mode).toBe('avail');
+  });
+
+  it('a no-reply sender asking for availability gets a booking action, not a reply-with-times flow', async () => {
+    const { noReplyScheduling } = await import('./index');
+    const raw = classifyHeuristic(msg('no-reply@greenhouse.example', 'Interview invitation: Acme', 'We would like to schedule an interview. Please let us know what times work for you next week: https://app.goodtime.example/book/abc'), NOW);
+    const c = noReplyScheduling(raw);
+    expect(c.mode).toBeUndefined();
+    expect(c.need).toBeUndefined();
+    expect(c.action).toMatch(/^(Book a time using the scheduling link|Follow the scheduling instructions)/);
+  });
+});

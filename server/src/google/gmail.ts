@@ -3,6 +3,8 @@ import { b64url, decrypt, encrypt } from '../crypto';
 import type { GmailMessage } from '../mime';
 import { readAccounts, writeAccounts } from '../store';
 import type { StoredAccount } from '../types';
+import { msRefreshAccessToken } from '../microsoft/oauth';
+import { OutlookMail } from '../microsoft/mail';
 import { MockGmail } from './mock';
 import { refreshAccessToken } from './oauth';
 
@@ -28,7 +30,7 @@ const RETRY_MS = [2000, 4000];
  */
 const UNITS_PER_SEC = 150;
 const pace = new Map<string, number>();
-async function spend(accountId: string, units: number): Promise<void> {
+export async function paceRequests(accountId: string, units: number): Promise<void> {
   const now = Date.now();
   const start = Math.max(now, pace.get(accountId) || 0);
   pace.set(accountId, start + (units / UNITS_PER_SEC) * 1000);
@@ -67,7 +69,7 @@ export const isRateLimited = (status: number, text: string): boolean => status =
 export async function accessTokenFor(acct: StoredAccount): Promise<string> {
   const secret = tokenSecret();
   if (acct.expiresAt - Date.now() > 60_000) return decrypt(acct.accessToken, secret);
-  const t = await refreshAccessToken(decrypt(acct.refreshToken, secret));
+  const t = await (acct.provider === 'Outlook' ? msRefreshAccessToken : refreshAccessToken)(decrypt(acct.refreshToken, secret));
   acct.accessToken = encrypt(t.access_token, secret);
   acct.expiresAt = Date.now() + t.expires_in * 1000;
   if (t.refresh_token) acct.refreshToken = encrypt(t.refresh_token, secret);
@@ -80,7 +82,7 @@ export class RealGmail implements GmailApi {
 
   private async call<T>(path: string, init: RequestInit = {}, units = 5): Promise<T> {
     for (let attempt = 0; ; attempt++) {
-      await spend(this.acct.id, units);
+      await paceRequests(this.acct.id, units);
       const token = await accessTokenFor(this.acct);
       const r = await fetch(BASE + path, { ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init.headers || {}) } });
       if (r.ok) return (await r.json()) as T;
@@ -153,5 +155,5 @@ export function buildRawReply(o: { fromName: string; fromAddr: string; to: strin
 
 export function gmailFor(acct: StoredAccount): GmailApi {
   if (cfg.mock) return MockGmail.for(acct.id);
-  return new RealGmail(acct);
+  return acct.provider === 'Outlook' ? new OutlookMail(acct) : new RealGmail(acct);
 }

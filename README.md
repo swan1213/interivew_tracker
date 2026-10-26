@@ -82,9 +82,23 @@ Notes and limits:
 
 - While the Google app is in **Testing** status, refresh tokens expire after 7 days and you must connect again. Publishing the app (and passing Google's verification for the Gmail scope) removes that limit; a Google Workspace account can instead mark the app *Internal*.
 - Tokens are encrypted at rest in `server/data/` (key in `server/data/secret.key` or `TOKEN_SECRET`). That folder is ignored by git.
-- Outlook / Microsoft 365 is not wired yet; the provider interface is ready for it.
+- Outlook.com and Microsoft 365 mailboxes connect too; see *Connect Outlook* below.
 - `npm run dev:mock` runs the same flow against a fake Google (instant sign-in, demo mailbox in Gmail format) for development without credentials.
 - Once Google is configured, everyone must sign in; see *Sign-in and roles*.
+
+## Connect Outlook
+
+Outlook.com (personal) and Microsoft 365 (work or school) mailboxes work like Gmail ones: the same sync, classification, replies, read / flag / archive write-back, and two-way calendar. The server talks to Microsoft Graph (`server/src/microsoft/`), presenting Outlook mail and events in the shapes the Gmail code already handles: a conversation is a thread, read and flagged are the UNREAD and STARRED labels, and Inbox, Sent, Deleted Items and Junk map to INBOX, SENT, TRASH and SPAM. Archiving moves the conversation to the Archive folder.
+
+1. **Register the app** in the [Microsoft Entra admin center](https://entra.microsoft.com/) (or Azure portal) → *App registrations → New registration*:
+   - Supported account types: **Accounts in any organizational directory and personal Microsoft accounts**.
+   - Redirect URI: platform **Web**, `http://localhost:5173/api/auth/microsoft/callback` (and `https://<your-app>.vercel.app/api/auth/microsoft/callback` for production).
+2. *Certificates & secrets → New client secret*; copy its **Value** (shown once).
+3. *API permissions → Add a permission → Microsoft Graph → Delegated*: `offline_access`, `User.Read`, `Mail.ReadWrite`, `Mail.Send`, `Calendars.ReadWrite` (`openid`, `email`, `profile` are added by default).
+4. Set `MICROSOFT_CLIENT_ID` (the *Application (client) ID*) and `MICROSOFT_CLIENT_SECRET` in `.env` or the Vercel project, then restart or redeploy. `/api/health` reports `"outlook":true`.
+5. *Connected accounts → Add account → Continue with Microsoft*. A work or school tenant may require an administrator to approve the permissions once.
+
+`MICROSOFT_TENANT` defaults to `common` (personal and work or school accounts); set a tenant id or `organizations` / `consumers` to restrict it. Client secrets expire (6 to 24 months); create a new one before then. Microsoft has no token-revoke call, so *Disconnect* deletes the stored token and cached mail, and you remove the app under your Microsoft account's permissions if you want its access withdrawn too.
 
 ### Production
 

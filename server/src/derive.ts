@@ -68,9 +68,9 @@ export const accountInitial = (email: string): string => (email.trim()[0] || 'G'
 export function accountView(a: StoredAccount, now: Date, color = a.color): Account {
   return {
     id: a.id,
-    label: a.name && a.name !== a.email ? a.name + ' · Gmail' : a.email,
+    label: a.name && a.name !== a.email ? a.name + ' · ' + a.provider : a.email,
     addr: a.email,
-    provider: 'Gmail',
+    provider: a.provider,
     color,
     initial: accountInitial(a.email),
     sendAs: a.name || a.email,

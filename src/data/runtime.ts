@@ -9,6 +9,8 @@ export interface Runtime {
   mock: boolean;
   /** An Anthropic key is set on the server, so classification uses the model. */
   ai: boolean;
+  /** Outlook / Microsoft 365 sign-in can run. */
+  outlook: boolean;
   /** The server requires sign-in. */
   auth: boolean;
   /** Who is signed in, or null. */
@@ -17,7 +19,7 @@ export interface Runtime {
   authError: string;
 }
 
-export const runtime: Runtime = { apiAvailable: false, configured: false, mock: false, ai: false, auth: false, user: null, authError: '' };
+export const runtime: Runtime = { apiAvailable: false, configured: false, mock: false, ai: false, outlook: false, auth: false, user: null, authError: '' };
 
 /** Ask the server what it can do and pick the matching provider. Falls back to the demo. */
 export async function detectRuntime(): Promise<Runtime> {
@@ -29,6 +31,7 @@ export async function detectRuntime(): Promise<Runtime> {
     runtime.configured = !!h.configured;
     runtime.mock = !!h.mock;
     runtime.ai = !!h.ai;
+    runtime.outlook = !!h.outlook;
     if (h.configured) {
       setProvider(new ApiMailProvider(h));
       runtime.auth = true;

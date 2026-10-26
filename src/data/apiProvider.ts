@@ -6,6 +6,8 @@ export interface ApiHealth {
   mock: boolean;
   provider: string;
   ai: boolean;
+  /** Outlook / Microsoft 365 mailboxes can be connected. */
+  outlook?: boolean;
   /** Sign-in is required (true whenever Google is configured). */
   auth?: boolean;
 }
@@ -71,8 +73,8 @@ export class ApiMailProvider implements MailProvider {
   }
 
   async connectAccount(kind: 'Gmail' | 'Outlook'): Promise<Account | null> {
-    if (kind !== 'Gmail') throw new Error('Outlook / Microsoft 365 sign-in is not set up yet. Google sign-in is available.');
-    window.location.assign('/api/auth/google/start');
+    if (kind === 'Outlook' && !this.health.outlook) throw new Error('Outlook sign-in is not set up on the server yet. See README → Connect Outlook.');
+    window.location.assign(kind === 'Outlook' ? '/api/auth/microsoft/start' : '/api/auth/google/start');
     return null;
   }
 

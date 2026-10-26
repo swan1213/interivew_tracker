@@ -4,7 +4,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, SAVED_FILTERS, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email } from '@/data/types';
-import { companyLine, effCat, filterEmails, firstLink, needsAction, previewOf, RANGE_OPTIONS, rangeDays, replySubject } from '@/lib/mail';
+import { companyLine, effCat, filterEmails, firstLink, isNoReply, needsAction, previewOf, RANGE_OPTIONS, rangeDays, replySubject } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { cx, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -230,10 +230,12 @@ function detailActions(e: Email, ev: CalEvent | undefined, st: AppState): Detail
   if (!needsAction(e)) return [];
   const c = effCat(e);
   const acts: DetailAction[] = [];
-  if (e.mode === 'avail') {
+  // Scheduling by reply needs someone to read the reply; a no-reply sender schedules through a link.
+  const byReply = e.canReply && !isNoReply(e.fromAddr);
+  if (e.mode === 'avail' && byReply) {
     acts.push({ label: 'Schedule interview', primary: true, run: () => st.openSched('avail') });
     acts.push({ label: 'Open calendar', primary: false, run: () => st.go('cal', { calView: 'week', calDate: st.today }) });
-  } else if (e.mode === 'resched') {
+  } else if (e.mode === 'resched' && byReply) {
     acts.push({ label: 'Pick a new time', primary: true, run: () => st.openSched('resched') });
     acts.push({ label: 'Open calendar', primary: false, run: () => st.go('cal', { calView: 'week', calDate: st.today, calSel: e.evId || '' }) });
   } else if (e.mode === 'confirm') {

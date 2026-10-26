@@ -60,7 +60,7 @@ export function startCalendarSync(store: SyncedStore): void {
     } catch (e) {
       // Say it once; the next calendar change retries.
       const msg = (e as Error).message;
-      if (msg !== warned) store.getState().say('Google Calendar: ' + msg);
+      if (msg !== warned) store.getState().say('Calendar: ' + msg);
       warned = msg;
     } finally {
       running = false;

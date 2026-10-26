@@ -7,7 +7,8 @@ import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot, conversat
 import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor, isRateLimitError } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
-import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest } from './google/oauth';
+import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest, type TokenSet, type UserInfo } from './google/oauth';
+import { MOCK_MS_USER, MS_SCOPES, msAuthUrl, msExchangeCode, msUserInfo } from './microsoft/oauth';
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
@@ -36,7 +37,7 @@ export function createApi(): express.Express {
   app.use(express.json({ limit: '1mb' }));
 
   app.get('/health', (_req, res) => {
-    res.json({ configured: cfg.configured, mock: cfg.mock, provider: 'gmail', ai: !!cfg.anthropicKey && !cfg.mock, auth: cfg.configured });
+    res.json({ configured: cfg.configured, mock: cfg.mock, provider: 'gmail', outlook: cfg.msConfigured, ai: !!cfg.anthropicKey && !cfg.mock, auth: cfg.configured });
   });
 
   const home = (res: Response, q = '') => res.redirect(cfg.appUrl + '/' + q);
@@ -147,37 +148,82 @@ export function createApi(): express.Express {
       }
       const tokens = cfg.mock ? mockTokens() : await exchangeCode(q.code, verifier);
       const info = cfg.mock ? MOCK_USER : await fetchUserInfo(tokens.access_token);
-      if (!info.email) {
-        back('error=' + encodeURIComponent('Google did not return an email address.'));
+      back(await saveAccount('Gmail', tokens, info));
+    }),
+  );
+
+  /** Store a newly connected (or reconnected) mailbox; returns the query string to send the browser back with. */
+  const saveAccount = async (provider: StoredAccount['provider'], tokens: TokenSet, info: UserInfo): Promise<string> => {
+    const brand = provider === 'Outlook' ? 'Microsoft' : 'Google';
+    if (!info.email) return 'error=' + encodeURIComponent(brand + ' did not return an email address.');
+    const secret = tokenSecret();
+    const accts = await readAccounts();
+    const email = info.email.toLowerCase();
+    const id = (provider === 'Outlook' ? 'o-' : 'g-') + createHash('sha1').update(email).digest('hex').slice(0, 8);
+    const existing = accts.find((a) => a.id === id);
+    const refreshToken = tokens.refresh_token ? encrypt(tokens.refresh_token, secret) : existing?.refreshToken;
+    if (!refreshToken) {
+      return 'error=' + encodeURIComponent(brand + ' did not issue a refresh token. Remove this app under your ' + brand + ' account permissions, then connect again.');
+    }
+    const others = accts.filter((a) => a.id !== id);
+    const taken = new Set(accountColors(others).values());
+    const acct: StoredAccount = {
+      id,
+      email,
+      name: info.name || email,
+      provider,
+      color: existing && !taken.has(existing.color) ? existing.color : ACCOUNT_COLORS.find((c) => !taken.has(c)) || ACCOUNT_COLORS[others.length % ACCOUNT_COLORS.length],
+      initial: accountInitial(email),
+      refreshToken,
+      accessToken: encrypt(tokens.access_token, secret),
+      expiresAt: Date.now() + tokens.expires_in * 1000,
+      lastSync: existing?.lastSync ?? null,
+      scopes: (tokens.scope || '').split(' ').filter(Boolean),
+    };
+    await writeAccounts(existing ? accts.map((a) => (a.id === id ? acct : a)) : accts.concat([acct]));
+    return 'connected=' + encodeURIComponent(id);
+  };
+
+  /** Connect an Outlook.com or Microsoft 365 mailbox (members and admins). */
+  app.get(
+    '/auth/microsoft/start',
+    requireRole('member'),
+    wrap(async (_req, res) => {
+      if (!cfg.msConfigured) {
+        res.status(503).json({ error: 'Outlook sign-in is not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET, then restart.' });
         return;
       }
-      const secret = tokenSecret();
-      const accts = await readAccounts();
-      const email = info.email.toLowerCase();
-      const id = 'g-' + createHash('sha1').update(email).digest('hex').slice(0, 8);
-      const existing = accts.find((a) => a.id === id);
-      const refreshToken = tokens.refresh_token ? encrypt(tokens.refresh_token, secret) : existing?.refreshToken;
-      if (!refreshToken) {
-        back('error=' + encodeURIComponent('Google did not issue a refresh token. Remove this app under your Google account permissions, then connect again.'));
+      const { state, verifier } = await beginAuth('connect');
+      if (cfg.mock) {
+        res.redirect('/api/auth/microsoft/callback?code=mock&state=' + encodeURIComponent(state));
         return;
       }
-      const others = accts.filter((a) => a.id !== id);
-      const taken = new Set(accountColors(others).values());
-      const acct: StoredAccount = {
-        id,
-        email,
-        name: info.name || email,
-        provider: 'Gmail',
-        color: existing && !taken.has(existing.color) ? existing.color : ACCOUNT_COLORS.find((c) => !taken.has(c)) || ACCOUNT_COLORS[others.length % ACCOUNT_COLORS.length],
-        initial: accountInitial(email),
-        refreshToken,
-        accessToken: encrypt(tokens.access_token, secret),
-        expiresAt: Date.now() + tokens.expires_in * 1000,
-        lastSync: existing?.lastSync ?? null,
-        scopes: (tokens.scope || '').split(' ').filter(Boolean),
-      };
-      await writeAccounts(existing ? accts.map((a) => (a.id === id ? acct : a)) : accts.concat([acct]));
-      back('connected=' + encodeURIComponent(id));
+      res.redirect(msAuthUrl(state, verifier));
+    }),
+  );
+
+  app.get(
+    '/auth/microsoft/callback',
+    wrap(async (req, res) => {
+      const back = (q: string) => res.redirect(cfg.appUrl + '/accounts?' + q);
+      const q = req.query as Record<string, string | undefined>;
+      if (q.error) {
+        back('error=' + encodeURIComponent(q.error === 'access_denied' ? 'Outlook sign-in was cancelled.' : q.error_description || q.error));
+        return;
+      }
+      const pend = q.state ? await takeAuthRequest(q.state) : null;
+      if (!q.code || !pend || pend.purpose !== 'connect') {
+        back('error=' + encodeURIComponent('The sign-in session expired. Please try again.'));
+        return;
+      }
+      const actor = (await userOf(req)).user;
+      if (!actor || !atLeast(actor.role, 'member')) {
+        back('error=' + encodeURIComponent('Sign in as a member or admin to connect a mailbox.'));
+        return;
+      }
+      const tokens = cfg.mock ? { ...mockTokens(), scope: MS_SCOPES.join(' ') } : await msExchangeCode(q.code, pend.verifier);
+      const info = cfg.mock ? MOCK_MS_USER : await msUserInfo(tokens.access_token);
+      back(await saveAccount('Outlook', tokens, info));
     }),
   );
 
@@ -293,7 +339,8 @@ export function createApi(): express.Express {
         references: forward ? undefined : [head.references, head.messageId].filter(Boolean).join(' '),
       });
       const r = await gmailFor(a).send(raw, forward ? undefined : threadId);
-      if (!forward) {
+      // Outlook returns no id for a sent message; the next sync picks the sent copy up instead.
+      if (!forward && r.id) {
         // Record the reply in the stored thread right away; the next sync refreshes its labels.
         const mail = await readMail(acctId);
         const thread = mail.threads[threadId];
@@ -319,7 +366,8 @@ export function createApi(): express.Express {
         res.status(404).json({ error: 'Unknown account' });
         return;
       }
-      if (!cfg.mock) {
+      // Google tokens can be revoked; Microsoft has no revoke call (the user removes the app under their account's permissions).
+      if (!cfg.mock && a.provider !== 'Outlook') {
         try {
           await revokeToken(decrypt(a.refreshToken, tokenSecret()));
         } catch {
