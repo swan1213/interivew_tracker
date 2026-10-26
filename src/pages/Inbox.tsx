@@ -255,43 +255,43 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
   return (
     <section className="dcol" aria-label="Message detail">
       <div className="dhead">
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div className="ln wrap" style={{ marginBottom: 5 }}>
+        <div className="dtop">
+          <div className="ln wrap">
             <CatChip cat={c} />
             {e.sec && e.sec !== c && <CatChip cat={e.sec} dash withIcon={false} />}
             <PriBadge p={e.pri} suffix="priority" />
             {e.catOv && <span className="tag">Reclassified by you</span>}
             {e.ivStatus === 'awaiting' && <span className="tag">Awaiting confirmation</span>}
           </div>
-          <h2 style={{ minWidth: 0 }}>{e.subject}</h2>
+          <div className="ln wrap">
+            <button type="button" className="btn sm" onClick={() => st.openComp('reply')}>
+              <Icon name="reply" sm />
+              Reply
+            </button>
+            <button type="button" className="btn sm" onClick={() => st.openComp('replyall')}>
+              Reply all
+            </button>
+            <button type="button" className="btn sm" onClick={() => st.openComp('forward')}>
+              <Icon name="fwd" sm />
+              Forward
+            </button>
+            <button type="button" className="btn sm" onClick={() => st.archive(e.id, nextId)}>
+              <Icon name="archive" sm />
+              Archive
+            </button>
+            <label className="ln mini">
+              Category
+              <select className="sel" value={c} onChange={(ev2) => st.reclassify(ev2.target.value as Cat)} aria-label="Change classification">
+                {CAT_KEYS.map((k) => (
+                  <option key={k} value={k}>
+                    {CAT[k].l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
         </div>
-        <div className="ln wrap">
-          <button type="button" className="btn sm" onClick={() => st.openComp('reply')}>
-            <Icon name="reply" sm />
-            Reply
-          </button>
-          <button type="button" className="btn sm" onClick={() => st.openComp('replyall')}>
-            Reply all
-          </button>
-          <button type="button" className="btn sm" onClick={() => st.openComp('forward')}>
-            <Icon name="fwd" sm />
-            Forward
-          </button>
-          <button type="button" className="btn sm" onClick={() => st.archive(e.id, nextId)}>
-            <Icon name="archive" sm />
-            Archive
-          </button>
-          <label className="ln mini">
-            Category
-            <select className="sel" value={c} onChange={(ev2) => st.reclassify(ev2.target.value as Cat)} aria-label="Change classification">
-              {CAT_KEYS.map((k) => (
-                <option key={k} value={k}>
-                  {CAT[k].l}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <h2>{e.subject}</h2>
       </div>
 
       <div className="dscroll">
