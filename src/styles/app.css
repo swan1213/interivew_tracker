@@ -111,6 +111,9 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .sched{display:flex;gap:10px;align-items:flex-start;padding:9px 14px;border-top:1px solid var(--bd);width:100%;text-align:left}
 .sched:first-child{border-top:0}
 .sched:hover{background:var(--sf2)}
+.whose{display:inline-flex;align-items:center;gap:5px;max-width:100%;height:20px;margin-top:5px;padding:0 8px 0 2px;border-radius:99px;font-size:11px;font-weight:600;color:color-mix(in srgb,var(--c) 72%,var(--tx));background:color-mix(in srgb,var(--c) 12%,var(--sf))}
+.whose i{width:16px;height:16px;border-radius:99px;display:grid;place-items:center;flex:none;font-style:normal;font-size:9.5px;font-weight:700;color:#fff;background:var(--c)}
+.whose span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tm{width:64px;flex:none;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px}
 .tm small{display:block;color:var(--tx3);font-weight:450;font-size:11px}
 .bar{height:8px;border-radius:4px;background:var(--sf3);overflow:hidden;flex:1}

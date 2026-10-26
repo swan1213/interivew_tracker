@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import type { Cat, Pri, Role } from '@/data/types';
+import type { Account, Cat, Pri, Role } from '@/data/types';
 import { CAT, type IconName } from '@/data/constants';
 import { colorOf, cx, initialOf, priV } from '@/lib/util';
 import { roleMeta } from '@/lib/roles';
@@ -127,3 +127,19 @@ export function RowBar({ name, n, pct, color, title, nameWidth, lead }: { name: 
     </div>
   );
 }
+
+/** Whose mailbox something belongs to, in that account's color: initial and name, full address on hover. */
+export function Whose({ a, accts = [] }: { a: Account | undefined; accts?: Account[] }) {
+  if (!a) return null;
+  // The person's name reads best; when two mailboxes share it, the account label tells them apart.
+  const shared = !a.sendAs || accts.some((x) => x.id !== a.id && x.sendAs === a.sendAs);
+  return (
+    <span className="whose" style={{ ['--c' as string]: a.color }} title={a.label + ' · ' + a.addr}>
+      <i>{a.initial}</i>
+      <span>{shared ? a.label : a.sendAs}</span>
+    </span>
+  );
+}
+
+/** A stripe in the account's color down a row's left edge. */
+export const stripe = (a: Account | undefined): CSSProperties | undefined => (a ? { boxShadow: 'inset 3px 0 0 ' + a.color } : undefined);

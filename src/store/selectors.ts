@@ -1,4 +1,4 @@
-import type { Account, Email, InboxView, ThemePref } from '@/data/types';
+import type { Account, CalEvent, Email, InboxView, ThemePref } from '@/data/types';
 import { inView, needsAction } from '@/lib/mail';
 
 export const FALLBACK_ACCT: Account = {
@@ -22,3 +22,9 @@ export const getAcct = (accts: Account[], id: string): Account =>
 
 export const isDarkTheme = (themePref: ThemePref, sysDark: boolean): boolean =>
   themePref === 'dark' || (themePref === 'auto' && sysDark);
+
+/** The mailbox an event belongs to: its own calendar account, else the account of the email it came from. */
+export function eventAccount(accts: Account[], emails: Email[], v: CalEvent): Account | undefined {
+  const id = v.acct || (v.emailId ? emails.find((e) => e.id === v.emailId)?.acct || v.emailId.split(':')[0] : '');
+  return id ? accts.find((a) => a.id === id) : undefined;
+}

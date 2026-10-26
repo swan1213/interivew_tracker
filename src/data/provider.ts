@@ -9,6 +9,10 @@ export interface Clock {
 }
 export interface SyncResult {
   newMessages: number;
+  /** Conversations not fetched yet; sync again to continue. */
+  pending?: number;
+  /** Conversations shown with a quick classification, waiting for the AI to refine them. */
+  refining?: number;
   errors?: string[];
 }
 

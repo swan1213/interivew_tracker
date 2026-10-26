@@ -1,5 +1,5 @@
 import { useStore, type AppState } from '@/store/store';
-import { actionCount, visibleAll } from '@/store/selectors';
+import { actionCount, eventAccount, getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { DFULL, MN, PRI_RANK, STAGES, STG, type IconName } from '@/data/constants';
 import type { CalEvent, Email } from '@/data/types';
@@ -9,7 +9,7 @@ import { activeEvents, busyAt, looksLikeInterview } from '@/lib/calendar';
 import { dObj, fmtT, lab, minutesLabel, rel, tzOffset } from '@/lib/time';
 import { cx, firstName, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { CatChip, CoBadge, Empty, PriBadge, RowBar } from '@/ui/bits';
+import { CatChip, CoBadge, Empty, PriBadge, RowBar, stripe, Whose } from '@/ui/bits';
 
 interface Kpi { label: string; icon: IconName; n: number; hot?: boolean; go: () => void }
 
@@ -84,6 +84,11 @@ export function Dashboard() {
     .filter(needsAction)
     .sort((a, b) => PRI_RANK[a.pri] - PRI_RANK[b.pri] || a.ago - b.ago)
     .slice(0, 5);
+
+  // With several mailboxes, every row says whose it is.
+  const many = st.accts.length > 1;
+  const mailAcct = (e: Email) => (many ? getAcct(st.accts, e.acct) : undefined);
+  const evAcct = (v: CalEvent) => (many ? eventAccount(st.accts, all, v) : undefined);
 
   const todayEvs = todaysEvents(st.events, st.today);
   const upcoming = upcomingInterviews(st.events, all, st.today);
@@ -186,14 +191,16 @@ export function Dashboard() {
             </div>
             {priority.map((e) => {
               const who = e.company || e.fromName;
+              const a = mailAcct(e);
               return (
-                <button key={e.id} type="button" className="pr" onClick={() => st.openEmail(e.id)}>
+                <button key={e.id} type="button" className="pr" onClick={() => st.openEmail(e.id)} style={stripe(a)}>
                   <CoBadge name={who} />
                   <span style={{ minWidth: 0, flex: 1 }}>
                     <span className="t">
                       {who}: {truncate(e.subject, 52)}
                     </span>
                     <div className="a">Action: {e.action}</div>
+                    <Whose a={a} accts={st.accts} />
                   </span>
                   <span className="m">
                     <CatChip cat={effCat(e)} />
@@ -235,21 +242,25 @@ export function Dashboard() {
                 {lab(st.today)} · {st.S.tz}
               </span>
             </div>
-            {todayEvs.map((v) => (
-              <button key={v.id} type="button" className="sched" onClick={() => st.go('cal', { calView: 'day', calDate: v.date, calSel: v.id })}>
-                <span className="tm">
-                  {fmtT(v.start + off)}
-                  <small>{minutesLabel(v)}</small>
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <b style={{ fontWeight: 600 }}>{v.kind === 'interview' ? v.co + ': ' + v.role : v.co}</b>
-                  <div className="mini">
-                    {(v.kind === 'interview' ? [v.platform, v.link, v.interviewer && 'with ' + v.interviewer] : [v.platform, v.location, v.role]).filter(Boolean).join(' · ')}
-                  </div>
-                </span>
-                <span className={cx('chip', STG[v.stage].cls)}>{STG[v.stage].label}</span>
-              </button>
-            ))}
+            {todayEvs.map((v) => {
+              const a = evAcct(v);
+              return (
+                <button key={v.id} type="button" className="sched" onClick={() => st.go('cal', { calView: 'day', calDate: v.date, calSel: v.id })} style={stripe(a)}>
+                  <span className="tm">
+                    {fmtT(v.start + off)}
+                    <small>{minutesLabel(v)}</small>
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <b style={{ fontWeight: 600 }}>{v.kind === 'interview' ? v.co + ': ' + v.role : v.co}</b>
+                    <div className="mini">
+                      {(v.kind === 'interview' ? [v.platform, v.link, v.interviewer && 'with ' + v.interviewer] : [v.platform, v.location]).filter(Boolean).join(' · ')}
+                    </div>
+                    <Whose a={a} accts={st.accts} />
+                  </span>
+                  <span className={cx('chip', STG[v.stage].cls)}>{STG[v.stage].label}</span>
+                </button>
+              );
+            })}
             {todayEvs.length === 0 && <Empty title="Nothing scheduled today" style={{ padding: 24 }} />}
           </section>
 
@@ -266,8 +277,9 @@ export function Dashboard() {
             {upcoming.map(({ id, ev: v, email }) => {
               if (!v) {
                 const e = email!;
+                const a = mailAcct(e);
                 return (
-                  <button key={id} type="button" className="sched" onClick={() => st.openEmail(e.id)}>
+                  <button key={id} type="button" className="sched" onClick={() => st.openEmail(e.id)} style={stripe(a)}>
                     <span className="tm">
                       Time
                       <small>not stated</small>
@@ -279,6 +291,7 @@ export function Dashboard() {
                       <div className="mini" style={{ color: 'var(--warn)', fontWeight: 600 }}>
                         Confirmed by email; open it to see when and add it to your calendar
                       </div>
+                      <Whose a={a} accts={st.accts} />
                     </span>
                     <CatChip cat="confirmed" />
                   </button>
@@ -287,11 +300,13 @@ export function Dashboard() {
               const em = v.emailId ? all.find((e) => e.id === v.emailId) : undefined;
               const resched = !!em && em.mode === 'resched' && needsAction(em);
               const warn = (v.kind === 'interview' && !v.added) || resched;
+              const a = evAcct(v);
               return (
                 <button
                   key={v.id}
                   type="button"
                   className="sched"
+                  style={stripe(a)}
                   onClick={() => (v.added ? st.go('cal', { calView: 'week', calDate: v.date, calSel: v.id }) : st.openEmail(v.emailId || ''))}
                 >
                   <span className="tm">
@@ -300,12 +315,13 @@ export function Dashboard() {
                   </span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <b style={{ fontWeight: 600 }}>{v.kind === 'interview' ? v.co + ': ' + v.role : v.co}</b>
-                    <div className="mini">{(v.kind === 'interview' ? [v.platform, v.interviewer] : [v.platform, v.location, 'Google Calendar']).filter(Boolean).join(' · ')}</div>
+                    <div className="mini">{(v.kind === 'interview' ? [v.platform, v.interviewer] : [v.platform, v.location]).filter(Boolean).join(' · ')}</div>
                     {warn && (
                       <div className="mini" style={{ color: 'var(--warn)', fontWeight: 600 }}>
                         {!v.added ? 'Confirmed by email but not on your calendar yet' : 'Reschedule requested. Original time held.'}
                       </div>
                     )}
+                    <Whose a={a} accts={st.accts} />
                   </span>
                   <span className={cx('chip', STG[v.stage].cls)}>{STG[v.stage].label}</span>
                 </button>

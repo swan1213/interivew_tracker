@@ -4,7 +4,7 @@ import type {
   Member, Notif, Page, Pri, Role, Settings, Slot, SortKey, StageKey, ThemePref, ThreadMsg, Tone,
 } from '@/data/types';
 import { buildDemoData } from '@/data/demo';
-import { provider } from '@/data/provider';
+import { provider, type SyncResult } from '@/data/provider';
 import { runtime } from '@/data/runtime';
 import { authApi, toMember } from '@/data/apiProvider';
 import { CAT, DATA_KEY, DATA_VERSION, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, PREFS_KEY, stageLabel } from '@/data/constants';
@@ -256,6 +256,9 @@ function initialFields(): StateFields {
 
 let autoSyncing = false;
 
+/** Rounds one sync keeps going while older mail is still waiting, so a first sync fills in the whole window. */
+const MAX_SYNC_ROUNDS = 40;
+
 export const useStore = create<AppState>()((set, get) => {
   const mapEmail = (id: string, fn: (e: Email) => Partial<Email>) =>
     set((s) => ({ emails: s.emails.map((e) => (e.id === id ? { ...e, ...fn(e) } : e)) }));
@@ -283,6 +286,23 @@ export const useStore = create<AppState>()((set, get) => {
       ...over,
     };
   };
+  /**
+   * Sync, then keep syncing while the server reports older conversations still
+   * waiting, reloading after each round so mail appears as it arrives.
+   */
+  const syncAll = async (accountId?: string): Promise<SyncResult> => {
+    let newMessages = 0;
+    for (let round = 0; ; round++) {
+      const r = await provider.sync(accountId);
+      newMessages += r.newMessages;
+      if (!provider.isDemo) await get().hydrate();
+      const left = (r.pending || 0) + (r.refining || 0);
+      if (r.errors?.length || !left || round + 1 >= MAX_SYNC_ROUNDS) return { ...r, newMessages };
+      const n = (k: number) => k + ' conversation' + (k === 1 ? '' : 's');
+      showToast(r.pending ? 'Loading older mail: ' + n(r.pending) + ' to go…' : 'All mail loaded. AI is reviewing ' + n(r.refining || 0) + '…');
+    }
+  };
+
   const draftFor = (s: StateFields, over: Partial<ReplyOpts> = {}) => genText(emailOf(s, s.selId), replyOpts(s, over));
 
   return {
@@ -605,10 +625,8 @@ export const useStore = create<AppState>()((set, get) => {
     // ---- accounts & sync ----
     refreshAll: () => {
       set({ syncing: true });
-      provider
-        .sync()
+      syncAll()
         .then(async (r) => {
-          await get().hydrate();
           set({ syncing: false });
           const n = get().accts.length;
           if (r.errors?.length) {
@@ -631,8 +649,7 @@ export const useStore = create<AppState>()((set, get) => {
       if (provider.isDemo || get().syncing || autoSyncing) return;
       autoSyncing = true;
       try {
-        const r = await provider.sync();
-        await get().hydrate();
+        const r = await syncAll();
         if (r.newMessages) showToast(r.newMessages + ' new message' + (r.newMessages === 1 ? '' : 's') + ' synced.');
       } catch {
         /* the Sync button reports problems; background syncs stay quiet */
@@ -644,10 +661,8 @@ export const useStore = create<AppState>()((set, get) => {
       const a = get().accts.find((x) => x.id === id);
       if (!a) return;
       set((s) => ({ accts: s.accts.map((x) => (x.id === id ? { ...x, sync: 'Syncing…' } : x)) }));
-      provider
-        .sync(id)
-        .then(async (r) => {
-          await get().hydrate();
+      syncAll(id)
+        .then((r) => {
           set((s) => ({ accts: s.accts.map((x) => (x.id === id ? { ...x, sync: 'Synced just now' } : x)) }));
           showToast(r.errors?.length ? 'Sync problem: ' + r.errors[0] : a.label + ' synced.');
         })
