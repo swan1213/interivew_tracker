@@ -1,4 +1,4 @@
-import { classifyMessage, classifySent } from './classify';
+import { classifyMessage, classifySent, modelWanted } from './classify';
 import { isJobRelated } from './classify/heuristic';
 import { cfg } from './config';
 import { GmailError, gmailFor, type GmailApi } from './google/gmail';
@@ -20,12 +20,26 @@ async function pooled<T>(items: T[], width: number, fn: (x: T) => Promise<void>)
   await Promise.all(workers);
 }
 
+/** New messages stored, deleted ones dropped, and work left for a later sync. */
+export interface SyncOutcome {
+  newMessages: number;
+  removed: number;
+  /** Conversations not downloaded yet. */
+  pending: number;
+  /** Conversations shown with the rules' classification, waiting for the model. */
+  refining: number;
+}
+
 /** Conversations fetched from Gmail at once, and messages classified at once (model calls take seconds each). */
 const FETCH_WIDTH = 8;
 const CLASSIFY_WIDTH = 5;
+/** Share of the time budget spent downloading; the rest goes to classifying and saving. */
+const FETCH_SHARE = 0.45;
+/** Time kept back from model calls (each can take several seconds) for the last ones to finish and the save. */
+const MODEL_RESERVE_MS = 12_000;
 
 // One sync per account at a time: a second request (a click during an auto-sync) joins the running one.
-const running = new Map<string, Promise<{ newMessages: number; removed: number }>>();
+const running = new Map<string, Promise<SyncOutcome>>();
 // Accounts are synced in parallel; their lastSync writes to the shared accounts file are serialized.
 let accountsWrite: Promise<void> = Promise.resolve();
 
@@ -35,7 +49,7 @@ let accountsWrite: Promise<void> = Promise.resolve();
  * known messages get their labels (read, starred, archived) refreshed so the UI
  * mirrors Gmail.
  */
-export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<{ newMessages: number; removed: number }> {
+export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct), now: Date = new Date()): Promise<SyncOutcome> {
   const inFlight = running.get(acct.id);
   if (inFlight) return inFlight;
   const p = syncAccountNow(acct, api, now).finally(() => running.delete(acct.id));
@@ -43,7 +57,10 @@ export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct),
   return p;
 }
 
-async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<{ newMessages: number; removed: number }> {
+async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<SyncOutcome> {
+  // Wall clock, not `now` (tests pin `now` to the fixture's day).
+  const deadline = Date.now() + cfg.syncBudgetMs;
+  const left = () => deadline - Date.now();
   const mail = await readMail(acct.id);
   const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
   const ids = listed.map((m) => m.id);
@@ -79,8 +96,13 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
 
   // Fetch each conversation with something new in full, so its earlier messages come
   // along even when they are older than the newest GMAIL_MAX_MESSAGES.
-  const threadIds = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
-  await pooled(threadIds, FETCH_WIDTH, async (threadId) => {
+  // Newest first (the order Gmail lists them); a large backlog is worked through over several syncs.
+  const waiting = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
+  const fetchUntil = Date.now() + cfg.syncBudgetMs * FETCH_SHARE;
+  let fetched = 0;
+  await pooled(waiting.slice(0, cfg.syncBatch), FETCH_WIDTH, async (threadId) => {
+    if (Date.now() >= fetchUntil) return;
+    fetched++;
     const msgs = (await api.getThread(threadId)).map((m) => parseMessage(m, acct.email));
     if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
       msgs.forEach((pm) => skipped.add(pm.id));
@@ -106,12 +128,21 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
       t.classifiedId = latest.id;
       continue;
     }
-    if (t.classifiedId !== head.id || !t.classification) toClassify.push(t);
+    if (t.classifiedId !== head.id || !t.classification || t.aiPending) toClassify.push(t);
   }
+  // Every new conversation is shown right away with the rules' result; the model refines
+  // the newest ones while time allows and the rest on later syncs.
+  const headOf = (t: StoredThread) => [...t.messages].reverse().find((m) => !m.isMine)!;
+  toClassify.sort((a, b) => headOf(b).date.localeCompare(headOf(a).date));
   await pooled(toClassify, CLASSIFY_WIDTH, async (t) => {
-    const head = [...t.messages].reverse().find((m) => !m.isMine)!;
-    t.classification = await classifyMessage(head, t.messages, now);
+    const head = headOf(t);
+    const fresh = t.classifiedId !== head.id || !t.classification;
+    const model = left() > MODEL_RESERVE_MS;
+    if (!fresh && !model) return;
+    t.classification = await classifyMessage(head, t.messages, now, model);
     t.classifiedId = head.id;
+    if (!model && modelWanted(head, t.messages)) t.aiPending = true;
+    else delete t.aiPending;
   });
 
   mail.skipped = Array.from(skipped).slice(-5000);
@@ -123,7 +154,8 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   });
   accountsWrite = write.catch(() => undefined);
   await write;
-  return { newMessages: added, removed };
+  const refining = Object.values(mail.threads).filter((t) => t.aiPending).length;
+  return { newMessages: added, removed, pending: waiting.length - fetched, refining };
 }
 
 /** Unlisted messages checked one by one per sync, at most. */

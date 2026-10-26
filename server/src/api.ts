@@ -187,8 +187,10 @@ export function createApi(): express.Express {
     wrap(async (_req, res) => {
       const accts = await readAccounts();
       const mails = Object.fromEntries(await Promise.all(accts.map(async (a) => [a.id, await readMail(a.id)] as const)));
-      const snapshot = buildSnapshot(accts, mails, new Date());
-      snapshot.events.push(...busyEvents(await readCalendar(), accts));
+      const cal = await readCalendar();
+      const snapshot = buildSnapshot(accts, mails, new Date(), cal.busy);
+      snapshot.events.push(...busyEvents(cal, accts));
+      snapshot.calRemoved = Object.keys(cal.removed);
       const user = res.locals.user as SignedInUser;
       res.json({ snapshot: user.role === 'guest' ? redactForGuest(snapshot) : snapshot });
     }),
@@ -201,18 +203,24 @@ export function createApi(): express.Express {
       const accountId = (req.body as { accountId?: string } | undefined)?.accountId;
       const accts = (await readAccounts()).filter((a) => !accountId || a.id === accountId);
       let newMessages = 0;
+      let pending = 0;
+      let refining = 0;
       const errors: string[] = [];
       // Every account, and each account's mail and calendar, sync side by side.
       await Promise.all(
         accts.flatMap((a) => [
           syncAccount(a).then(
-            (r) => void (newMessages += r.newMessages),
+            (r) => {
+              newMessages += r.newMessages;
+              pending += r.pending;
+              refining += r.refining;
+            },
             (e: Error) => void errors.push(a.email + ': ' + e.message),
           ),
           hasCalendar(a) ? syncCalendar(a).catch((e: Error) => void errors.push(a.email + ' calendar: ' + e.message)) : Promise.resolve(),
         ]),
       );
-      res.json({ newMessages, errors });
+      res.json({ newMessages, pending, refining, errors });
     }),
   );
 

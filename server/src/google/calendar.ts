@@ -25,6 +25,8 @@ export interface GEvent {
 export interface CalendarApi {
   /** Timed and all-day events on the primary calendar in [timeMin, timeMax), recurring ones expanded. */
   listEvents(timeMin: string, timeMax: string): Promise<GEvent[]>;
+  /** One event; rejects with status 404/410 when it no longer exists (a deleted one may also come back as status "cancelled"). */
+  get(id: string): Promise<GEvent>;
   insert(ev: GEvent): Promise<GEvent>;
   /** Replace an event; rejects with status 404/410 when it no longer exists. */
   update(id: string, ev: GEvent): Promise<GEvent>;
@@ -65,6 +67,10 @@ export class RealCalendar implements CalendarApi {
     return out;
   }
 
+  get(id: string): Promise<GEvent> {
+    return this.call<GEvent>('/' + encodeURIComponent(id));
+  }
+
   insert(ev: GEvent): Promise<GEvent> {
     return this.call<GEvent>('', { method: 'POST', body: JSON.stringify(ev) });
   }
@@ -100,6 +106,12 @@ export class MockCalendar implements CalendarApi {
       const s = Date.parse(e.start?.dateTime || e.start?.date || '');
       return s >= lo && s < hi;
     });
+  }
+
+  async get(id: string): Promise<GEvent> {
+    const ev = this.events.get(id);
+    if (!ev) throw new CalendarError(404, 'mock: no event ' + id);
+    return ev;
   }
 
   async insert(ev: GEvent): Promise<GEvent> {

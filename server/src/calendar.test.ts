@@ -135,7 +135,7 @@ describe('push and pull with the mock calendar', () => {
     await cal.insert({ summary: 'Team sync', start: { dateTime: '2026-10-27T19:00:00Z' }, end: { dateTime: '2026-10-27T19:30:00Z' } });
     await cal.insert({ summary: 'Far future', start: { dateTime: '2027-03-01T15:00:00Z' }, end: { dateTime: '2027-03-01T16:00:00Z' } });
     await cal.insert({ ...toGoogleEvent(iv()), start: { dateTime: '2026-10-27T15:00:00Z' }, end: { dateTime: '2026-10-27T16:00:00Z' } });
-    expect(await syncCalendar(acct('g2', []), cal, now)).toEqual({ busy: 1 });
+    expect(await syncCalendar(acct('g2', []), cal, now)).toEqual({ busy: 1, deleted: 0 });
     expect((await readCalendar()).busy.g2.map((v) => [v.co, v.date, v.start, v.end])).toEqual([['Team sync', '2026-10-27', 15, 15.5]]);
   });
 });
@@ -188,6 +188,26 @@ describe('calendar API', () => {
 
     expect(await (await req(path, 'DELETE')).json()).toEqual({ removed: true });
     expect([...cal.events.values()].map((g) => g.summary)).toEqual(['Gym']);
+  });
+
+  it('takes an interview off the app when it is deleted in Google Calendar, and puts it back when added again', async () => {
+    const { readAccounts } = await import('./store');
+    const { MockCalendar } = await import('./google/calendar');
+    const [a] = await readAccounts();
+    const cal = MockCalendar.for(a.id);
+    const path = '/calendar/events/' + encodeURIComponent(iv().id);
+    expect((await req(path, 'PUT', { event: iv() })).status).toBe(200);
+    const gid = [...cal.events.entries()].find(([, g]) => g.extendedProperties?.private?.iflowId === iv().id)![0];
+
+    await req('/sync', 'POST', {});
+    expect((await (await req('/snapshot')).json()).snapshot.calRemoved).toEqual([]);
+
+    await cal.remove(gid); // the user deletes it in Google Calendar
+    await req('/sync', 'POST', {});
+    expect((await (await req('/snapshot')).json()).snapshot.calRemoved).toEqual([iv().id]);
+
+    expect((await req(path, 'PUT', { event: iv() })).status).toBe(200);
+    expect((await (await req('/snapshot')).json()).snapshot.calRemoved).toEqual([]);
   });
 
   it('keeps guests out', async () => {

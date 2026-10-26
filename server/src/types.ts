@@ -90,6 +90,8 @@ export interface StoredThread {
   /** Classification of the latest inbound message, keyed by that message's id. */
   classifiedId?: string;
   classification?: Classification;
+  /** Classified by the rules only because a sync ran short of time; the model refines it on a later sync. */
+  aiPending?: boolean;
 }
 
 export interface MailStore {

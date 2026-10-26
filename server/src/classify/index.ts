@@ -26,15 +26,21 @@ export function classifyOther(rules: Classification): Classification {
  * Rules always run first; when an Anthropic key is configured the model refines the
  * result and the rules output is the fallback if the call fails.
  */
-export async function classifyMessage(head: ParsedMessage, thread: ParsedMessage[], now: Date = new Date()): Promise<Classification> {
+export async function classifyMessage(head: ParsedMessage, thread: ParsedMessage[], now: Date = new Date(), allowModel = true): Promise<Classification> {
   const rules = classifyHeuristic(head, now);
   // Phrases like "please confirm" or "when are you free" also appear in ordinary mail; only job mail gets job categories.
   if (!rules.jobRelated && !thread.some((m) => isJobRelated(m))) return classifyOther(rules);
-  if (!cfg.anthropicKey || cfg.mock) return rules;
+  if (!allowModel || !cfg.anthropicKey || cfg.mock) return rules;
   try {
     return await classifyWithClaude(head, thread, rules, now);
   } catch (e) {
     console.warn('[classify] model call failed, using rules:', (e as Error).message);
     return rules;
   }
+}
+
+/** Whether classifyMessage would ask the model about this thread (job mail, with a key configured). */
+export function modelWanted(head: ParsedMessage, thread: ParsedMessage[]): boolean {
+  if (!cfg.anthropicKey || cfg.mock) return false;
+  return isJobRelated(head) || thread.some((m) => isJobRelated(m));
 }

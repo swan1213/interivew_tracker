@@ -71,6 +71,10 @@ function walk(p: GmailPart | undefined, out: { plain: string[]; html: string[]; 
   (p.parts || []).forEach((c) => walk(c, out));
 }
 
+/** Longest body kept: enough for any real message, while newsletters with huge bodies cannot bloat storage. */
+const BODY_MAX = 40_000;
+const capBody = (b: string): string => (b.length > BODY_MAX ? b.slice(0, BODY_MAX) + '\n\n[Message shortened. Open it in Gmail to read the rest.]' : b);
+
 /** Turn a Gmail API message into the flat shape the classifier and UI use. */
 export function parseMessage(m: GmailMessage, myEmail: string): ParsedMessage {
   const p = m.payload;
@@ -90,7 +94,7 @@ export function parseMessage(m: GmailMessage, myEmail: string): ParsedMessage {
     to: header(p, 'To'),
     subject: header(p, 'Subject') || '(no subject)',
     date: new Date(dateMs).toISOString(),
-    bodyText: body.replace(/\r\n/g, '\n'),
+    bodyText: capBody(body.replace(/\r\n/g, '\n')),
     atts: out.atts,
     labelIds,
     messageId: header(p, 'Message-ID') || header(p, 'Message-Id'),

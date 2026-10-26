@@ -1,3 +1,4 @@
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cfg } from './config';
@@ -85,17 +86,26 @@ function store(): Backend {
   return backend;
 }
 
+// Large values (a mailbox holds thousands of messages) are gzipped: about a sixth of the size,
+// well inside Redis request limits, and faster to move on every sync and snapshot.
+const GZ = 'gz1:';
+const GZ_FROM = 64 * 1024;
+
 export async function readJson<T>(name: string, fallback: T): Promise<T> {
   const raw = await store().get(name);
   if (raw == null) return fallback;
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw.startsWith(GZ) ? gunzipSync(Buffer.from(raw.slice(GZ.length), 'base64')).toString('utf8') : raw) as T;
   } catch {
-    return fallback;
+    // Never fall back to empty here: the next write would replace the stored data with nothing.
+    throw new Error('Stored data "' + name + '" could not be read.');
   }
 }
 
-export const writeJson = (name: string, data: unknown, ttlS?: number): Promise<void> => store().set(name, JSON.stringify(data), ttlS);
+export const writeJson = (name: string, data: unknown, ttlS?: number): Promise<void> => {
+  const json = JSON.stringify(data);
+  return store().set(name, json.length < GZ_FROM ? json : GZ + gzipSync(json).toString('base64'), ttlS);
+};
 
 export const removeKey = (name: string): Promise<void> => store().del(name);
 

@@ -134,6 +134,41 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(out.peers).toEqual(['sam@corp.example']);
   });
 
+  it('works through a large backlog over several syncs, newest conversations first', async () => {
+    const other = { ...acct, id: 'g-batch' };
+    await store.writeAccounts([acct, other]);
+    const fresh = new mock.MockGmail();
+    fresh.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => fresh.messages.set(m.id, m));
+    process.env.GMAIL_SYNC_BATCH = '5';
+    try {
+      const pending: number[] = [];
+      for (let i = 0; i < 4; i++) pending.push((await sync.syncAccount(other, fresh, NOW)).pending);
+      expect(pending).toEqual([7, 2, 0, 0]);
+      expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(12);
+    } finally {
+      delete process.env.GMAIL_SYNC_BATCH;
+    }
+  });
+
+  it('saves what it has when out of time and continues on the next sync', async () => {
+    const other = { ...acct, id: 'g-budget' };
+    await store.writeAccounts([acct, other]);
+    const fresh = new mock.MockGmail();
+    fresh.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => fresh.messages.set(m.id, m));
+    process.env.GMAIL_SYNC_BUDGET_MS = '0';
+    try {
+      const r = await sync.syncAccount(other, fresh, NOW);
+      expect([r.newMessages, r.pending]).toEqual([0, 12]);
+    } finally {
+      delete process.env.GMAIL_SYNC_BUDGET_MS;
+    }
+    const r2 = await sync.syncAccount(other, fresh, NOW);
+    expect([r2.pending, r2.refining]).toEqual([0, 0]);
+    expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(12);
+  });
+
   it('forgets mail moved to Trash or deleted for good in Gmail', async () => {
     const ids = Object.keys((await store.readMail(acct.id)).threads);
     expect(ids).toContain('t-news');

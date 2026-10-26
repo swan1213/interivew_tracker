@@ -66,8 +66,20 @@ export const cfg = {
   get jobFilter(): boolean {
     return process.env.GMAIL_JOB_FILTER === 'on';
   },
+  /** Newest messages listed per sync, a safety cap well above 60 days of a busy inbox. */
   get maxMessages(): number {
-    return parseInt(process.env.GMAIL_MAX_MESSAGES || '300', 10);
+    return parseInt(process.env.GMAIL_MAX_MESSAGES || '3000', 10);
+  },
+  /** New conversations fetched and classified per sync request; the rest wait for the next one, so no request runs too long. */
+  get syncBatch(): number {
+    return parseInt(process.env.GMAIL_SYNC_BATCH || '200', 10);
+  },
+  /**
+   * Time one sync request may spend per account before saving what it has. Kept well under
+   * Vercel's 60-second function limit, so work done is never lost to a timeout.
+   */
+  get syncBudgetMs(): number {
+    return parseInt(process.env.GMAIL_SYNC_BUDGET_MS || '40000', 10);
   },
   /**
    * Workspace owners: always admin, cannot be demoted or removed.

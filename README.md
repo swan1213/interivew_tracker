@@ -72,7 +72,7 @@ Out of the box the app runs on demo data. Real Gmail needs a Google OAuth client
 
 What happens next:
 
-- Sync pulls the last 60 days of sent and received mail outside spam and trash (`GMAIL_SYNC_QUERY`, up to `GMAIL_MAX_MESSAGES`, default 300) and classifies each thread. Conversations you started that have no reply yet are listed under *Sent*. `GMAIL_JOB_FILTER=on` keeps only received mail with a job-search signal. Opening a message marks it read in Gmail; starring and archiving write back too.
+- Sync pulls the last 60 days of sent and received mail outside spam and trash (`GMAIL_SYNC_QUERY`, up to `GMAIL_MAX_MESSAGES`, default 3000) and classifies each thread. Each request works for at most `GMAIL_SYNC_BUDGET_MS` (default 40 s) and `GMAIL_SYNC_BATCH` new conversations (default 200), newest first, then saves; the app keeps syncing until the backlog is done, so a first sync of a busy inbox fills in over a few rounds. New mail appears at once with the rules' classification, and Claude refines it on the same or a later sync. Large stored records are gzipped, and message bodies are capped at 40,000 characters. Conversations you started that have no reply yet are listed under *Sent*. `GMAIL_JOB_FILTER=on` keeps only received mail with a job-search signal. Opening a message marks it read in Gmail; starring and archiving write back too.
 - Classification uses **keyword rules** by default. Set `ANTHROPIC_API_KEY` to have Claude read each recruiter email and fill in category, summary, stated facts vs. assumptions, meeting times and deadlines (model: `ANTHROPIC_MODEL`, default `claude-opus-5-5`).
 - Replies are sent through the Gmail API in the original thread, only when you click *Send now*.
 - *Disconnect* revokes the token and deletes the mail cached for that account.
@@ -99,7 +99,7 @@ Notes and limits:
 3. In Google Cloud Console add the redirect URI `https://<your-app>.vercel.app/api/auth/google/callback`.
 4. Redeploy. `https://<your-app>.vercel.app/api/health` should return `"configured":true`.
 
-A sync must finish within the function's 60-second limit; lower `GMAIL_MAX_MESSAGES` if it times out.
+A sync must finish within the function's 60-second limit; lower `GMAIL_SYNC_BUDGET_MS` if it times out.
 
 Keep the production Redis credentials out of your local `.env`, or `npm run dev` reads and writes the live workspace. Tests never load `.env`.
 

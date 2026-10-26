@@ -204,7 +204,18 @@ export function conversationGroups(threads: StoredThread[]): Map<string, StoredT
 const mergeGroup = (group: StoredThread[]): StoredThread =>
   group.length === 1 ? group[0] : { ...group[0], messages: group.flatMap((t) => t.messages) };
 
-export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, MailStore>, now: Date = new Date()): DataSnapshot {
+/** Whether a pulled busy block is the Google event `eid` (or one occurrence of it). */
+const isGoogleEvent = (busyId: string, acctId: string, eid: string): boolean => {
+  const gid = busyId.slice(('gcal-' + acctId + '-').length);
+  return gid === eid || gid.startsWith(eid + '_') || eid.startsWith(gid + '_');
+};
+
+/**
+ * `busy` is each account's pulled Google Calendar, when it has been synced. An interview
+ * from a calendar invitation then follows Google: the email points at the event on the
+ * calendar instead of adding a copy, and an invitation deleted or declined there is dropped.
+ */
+export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, MailStore>, now: Date = new Date(), busy: Record<string, CalEvent[]> = {}): DataSnapshot {
   const colors = accountColors(accounts);
   const accts = accounts.map((a) => accountView(a, now, colors.get(a.id)));
   const emails: Email[] = [];
@@ -224,6 +235,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
 
   // Calendar events from confirmed interviews with a concrete time.
   const events: CalEvent[] = [];
+  const windowStart = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
   for (const a of accounts) {
     const mail = mails[a.id];
     if (!mail) continue;
@@ -233,6 +245,15 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
       const id = a.id + ':' + t.id;
       const e = emails.find((x) => x.id === id);
       if (!e) continue;
+      const gcal = hasCalendar(a) ? busy[a.id] : undefined;
+      const eid = gcal ? t.messages.map((m) => calendarEventId(m.bodyText)).find(Boolean) : '';
+      // Inside the window the calendar sync covers, Google's copy is the truth.
+      if (gcal && eid && cls.event.date >= windowStart) {
+        const onCal = gcal.find((b) => isGoogleEvent(b.id, a.id, eid));
+        e.evId = onCal?.id;
+        if (!onCal) e.evRemoved = true;
+        continue;
+      }
       events.push({
         id: 'ev-' + id,
         kind: 'interview',

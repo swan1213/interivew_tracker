@@ -23,12 +23,17 @@ const AHEAD_DAYS = 60;
 export interface CalendarStore {
   links: Record<string, { accountId: string; gid: string }>;
   busy: Record<string, CalEvent[]>;
+  /** App interviews whose Google event was deleted there, with when that was noticed; the app takes them off its calendar. */
+  removed: Record<string, string>;
 }
 
 export const readCalendar = async (): Promise<CalendarStore> => {
   const c = await readJson<Partial<CalendarStore>>(FILE, {});
-  return { links: c.links || {}, busy: c.busy || {} };
+  return { links: c.links || {}, busy: c.busy || {}, removed: c.removed || {} };
 };
+
+/** Linked events checked one by one per sync, at most. */
+const VERIFY_MAX = 30;
 const writeCalendar = (c: CalendarStore): Promise<void> => writeJson(FILE, c);
 
 // Accounts sync in parallel; read-modify-write of the shared calendar file runs one at a time so none is lost.
@@ -150,12 +155,32 @@ export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
 }
 
 /** Pull the account's calendar into busy blocks. */
-export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calendarFor(acct), now: Date = new Date()): Promise<{ busy: number }> {
+export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calendarFor(acct), now: Date = new Date()): Promise<{ busy: number; deleted: number }> {
   const day = 86_400_000;
   const items = await api.listEvents(new Date(now.getTime() - PAST_DAYS * day).toISOString(), new Date(now.getTime() + AHEAD_DAYS * day).toISOString());
   const busy = items.map((g) => toBusy(acct, g)).filter((v): v is CalEvent => !!v);
-  await updateCalendar((c) => void (c.busy[acct.id] = busy));
-  return { busy: busy.length };
+
+  // Interviews the app put on this calendar but missing from the listing: outside the
+  // window, or deleted in Google Calendar. A lookup tells which.
+  const present = new Set(items.map((g) => g.id));
+  const links = Object.entries((await readCalendar()).links).filter(([, l]) => l.accountId === acct.id && !present.has(l.gid));
+  const deleted: string[] = [];
+  for (const [evId, l] of links.slice(0, VERIFY_MAX)) {
+    try {
+      if ((await api.get(l.gid)).status === 'cancelled') deleted.push(evId);
+    } catch (e) {
+      if (gone(e)) deleted.push(evId);
+    }
+  }
+
+  await updateCalendar((c) => {
+    c.busy[acct.id] = busy;
+    for (const id of deleted) {
+      delete c.links[id];
+      c.removed[id] = now.toISOString();
+    }
+  });
+  return { busy: busy.length, deleted: deleted.length };
 }
 
 export class NoCalendarError extends Error {}
@@ -187,7 +212,11 @@ export async function pushEvent(ev: CalEvent, accounts: StoredAccount[], apiFor:
     }
   }
   if (!gid) gid = (await api.insert(body)).id || '';
-  await updateCalendar((c) => void (c.links[ev.id] = { accountId: acct.id, gid }));
+  await updateCalendar((c) => {
+    c.links[ev.id] = { accountId: acct.id, gid };
+    // Added again from the app: no longer counts as deleted in Google.
+    delete c.removed[ev.id];
+  });
   return { gid, accountId: acct.id };
 }
 
