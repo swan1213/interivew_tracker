@@ -7,7 +7,10 @@
 import type { Cat, EmailMode, Pri } from '../../../src/data/types';
 import { addDays, businessDaysBetween, extractDateTimes, fmtT, isoLocal, lab, nextBusinessDays, zoneToEt } from '../time';
 import type { Classification, ParsedMessage, TimeHit } from '../types';
-import { stripQuoted } from '../mime';
+import { cleanBody, stripQuoted } from '../mime';
+
+/** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
+export const RULES_VERSION = 2;
 
 const NOREPLY = /no-?reply|do-?not-?reply|^notifications?@|^alerts?@|mailer-daemon|^noreply|^news(letter)?@|^updates?@/i;
 const NOREPLY_BODY = /\b(do not reply|please don't reply|replies are not monitored|automated (message|email|notification)|this (is an|mailbox is) (automated|unmonitored))\b/i;
@@ -166,13 +169,15 @@ function stageFor(cat: Cat, mode: EmailMode | undefined, text: string): string {
 }
 
 export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Classification {
-  const body = stripQuoted(p.bodyText);
+  const body = stripQuoted(cleanBody(p.bodyText));
   const text = p.subject + '\n' + body;
   const ref = new Date(p.date);
   const noReply = NOREPLY.test(p.fromAddr) || NOREPLY_BODY.test(body);
   const has = (re: RegExp) => re.test(text);
 
-  const offerHit = has(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|job offer|delighted to extend|formal offer|offer of employment)\b/i);
+  // "Job offer" / "formal offer" also show up where a receipt describes the process ("...then we'll talk about a formal offer").
+  const strongOffer = has(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|offer of employment)\b/i);
+  const looseOffer = has(/\b(job offer|formal offer)\b/i);
   const rejectHit = has(/\b(not (be )?moving forward|move forward with other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|pursue other candidates)\b/i);
   const reschedHit = has(/\breschedul\w*|\bmove (our|the|this|your|[a-z]+day'?s) (interview|call|meeting|conversation)|\bnew time\b|\bpush (back|our)/i);
   const confirmedHit = has(/\b(interview|call|session|meeting|conversation)\b[^.\n]{0,60}\b(is |has been )?(confirmed|scheduled|booked|set)\b|\bconfirmed:|\bconfirmation\b[^.\n]{0,40}\binterview|\bis confirmed\b|\bcalendar invite\b/i);
@@ -185,6 +190,8 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   const autoHit = noReply || has(/\b(job alert|new (roles|jobs|positions) (match|for you)|roles match|unsubscribe|newsletter|digest|weekly (roundup|summary))\b/i);
   const subjInvite = /\binvit/i.test(p.subject);
   const subjAvail = /\bavailab/i.test(p.subject);
+
+  const offerHit = strongOffer || (looseOffer && !appliedHit && !statusHit);
 
   let cat: Cat;
   let sec: Cat | '' = '';
@@ -315,6 +322,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
 
   return {
     classifier: 'rules',
+    rulesVersion: RULES_VERSION,
     jobRelated: isJobRelated(p),
     cat, sec, pri, conf: company ? conf : Math.max(30, conf - 10),
     company, role, recruiter,

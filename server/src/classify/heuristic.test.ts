@@ -152,3 +152,21 @@ describe('rule-based classifier on the demo mailbox', () => {
     expect(extractCompany({ ...base, fromName: 'Jane Doe', fromAddr: 'jane@gmail.com', bodyText: 'Hello there.' }, 'Hello there.')).toBe('');
   });
 });
+
+describe('receipts that describe the hiring process', () => {
+  const pm = (subject: string, bodyText: string): ParsedMessage => ({
+    id: 'x', threadId: 'tx', fromName: 'Wizcorp Ltd', fromAddr: 'notification@smartrecruiters.com', to: 'me@gmail.com', subject, date: '2026-10-23T22:14:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+
+  it('is an application receipt, not an offer, when it only mentions a formal offer later on', () => {
+    const c = classifyHeuristic(pm('Application Received - now what?', 'Hi&nbsp;Joshua,\nThanks for expressing interest in&nbsp;Keywords Studios. We&#39;ll take about five&nbsp;to ten business days to review your application. We&#39;ll start talking to you about a formal offer.'), NOW);
+    expect(c.cat).not.toBe('offer');
+    expect(c.pri).not.toBe('critical');
+    expect(c.summary).not.toContain('&nbsp;');
+  });
+
+  it('still treats a real offer as an offer', () => {
+    expect(classifyHeuristic(pm('Your offer', 'We are pleased to offer you the Software Engineer position. Your offer letter is attached.'), NOW).cat).toBe('offer');
+  });
+});

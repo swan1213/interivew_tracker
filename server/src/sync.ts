@@ -1,5 +1,5 @@
 import { classifyMessage, classifySent, modelWanted } from './classify';
-import { isJobRelated } from './classify/heuristic';
+import { isJobRelated, RULES_VERSION } from './classify/heuristic';
 import { cfg } from './config';
 import { GmailError, gmailFor, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
@@ -133,7 +133,7 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
       t.classifiedId = latest.id;
       continue;
     }
-    if (t.classifiedId !== head.id || !t.classification || t.aiPending) toClassify.push(t);
+    if (t.classifiedId !== head.id || !t.classification || t.aiPending || staleRules(t)) toClassify.push(t);
   }
   // Every new conversation is shown right away with the rules' result; the model refines
   // the newest ones while time allows and the rest on later syncs.
@@ -141,7 +141,7 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   toClassify.sort((a, b) => headOf(b).date.localeCompare(headOf(a).date));
   await pooled(toClassify, CLASSIFY_WIDTH, async (t) => {
     const head = headOf(t);
-    const fresh = t.classifiedId !== head.id || !t.classification;
+    const fresh = t.classifiedId !== head.id || !t.classification || staleRules(t);
     const model = left() > MODEL_RESERVE_MS;
     if (!fresh && !model) return;
     t.classification = await classifyMessage(head, t.messages, now, model);
@@ -162,6 +162,9 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   const refining = Object.values(mail.threads).filter((t) => t.aiPending).length;
   return { newMessages: added, removed, pending: waiting.length - fetched, refining };
 }
+
+/** Classified by an older version of the rules (the model's results are kept). */
+const staleRules = (t: StoredThread): boolean => t.classification?.classifier === 'rules' && t.classification.rulesVersion !== RULES_VERSION;
 
 /** Unlisted messages checked one by one per sync, at most. */
 const VERIFY_MAX = 50;

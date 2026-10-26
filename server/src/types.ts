@@ -52,6 +52,8 @@ export interface TimeHit {
 /** What the classifier (rules or Claude) says about one message. */
 export interface Classification {
   classifier: 'rules' | 'claude';
+  /** RULES_VERSION of the rules that produced a 'rules' classification. */
+  rulesVersion?: number;
   jobRelated: boolean;
   cat: Cat;
   sec: Cat | '';

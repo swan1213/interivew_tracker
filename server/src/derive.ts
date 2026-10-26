@@ -6,7 +6,7 @@
  */
 import type { Account, ActivityItem, Application, CalEvent, DataSnapshot, Email, EvStage, Notif, StageKey, ThreadMsg } from '../../src/data/types';
 import { hasCalendar } from './google/calendar';
-import { parseAddress } from './mime';
+import { cleanBody, parseAddress } from './mime';
 import { agoMinutes, fmtT, lab, relLabel, timeLabel, whenLabel } from './time';
 import type { MailStore, StoredAccount, StoredThread } from './types';
 
@@ -100,7 +100,7 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
     from: m.isMine ? 'You (' + (acct.name || acct.email) + ')' : m.fromName,
     addr: m.fromAddr,
     when: whenLabel(m.date),
-    body: m.bodyText,
+    body: cleanBody(m.bodyText),
     atts: m.atts,
     mine: m.isMine,
     first: i === 0,
@@ -143,7 +143,7 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
     assumptions: cls.assumptions,
     times: cls.times.map((h) => ({ label: h.label })),
     atts: head.atts,
-    body: head.bodyText,
+    body: cleanBody(head.bodyText),
     thread,
     done: replied && cls.needs ? true : undefined,
     replied: replied || undefined,

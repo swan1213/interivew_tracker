@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { b64url } from './crypto';
-import { humanSize, parseAddress, parseMessage, stripHtml, stripQuoted, type GmailMessage } from './mime';
+import { cleanBody, humanSize, parseAddress, parseMessage, stripHtml, stripQuoted, type GmailMessage } from './mime';
 
 describe('Gmail message parsing', () => {
   it('reads headers, prefers text/plain, collects attachments and flags', () => {
@@ -65,5 +65,16 @@ describe('Gmail message parsing', () => {
     expect(humanSize(2 * 1024 * 1024)).toBe('2.0 MB');
     expect(stripHtml('<ul><li>a</li><li>b</li></ul>')).toBe('• a\n• b');
     expect(stripQuoted('New text\n\nOn Mon, Oct 26, 2026 at 9:00 AM Tom <t@x.com> wrote:\n> old\n> stuff')).toBe('New text');
+  });
+});
+
+describe('plain-text bodies that carry HTML', () => {
+  it('turns escapes into the characters they stand for', () => {
+    expect(cleanBody('Hi&nbsp;Joshua, we&#39;ll be in touch &mdash; thanks &amp; regards')).toBe("Hi Joshua, we'll be in touch — thanks & regards");
+  });
+
+  it('strips tags some senders put in the text part, and leaves ordinary text alone', () => {
+    expect(cleanBody('Line one<br>Line two<p>Para</p>')).toBe('Line one\nLine two\nPara');
+    expect(cleanBody('Salary: 5 < 6 and AT&T is fine')).toBe('Salary: 5 < 6 and AT&T is fine');
   });
 });

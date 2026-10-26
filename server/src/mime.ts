@@ -18,7 +18,11 @@ export interface GmailMessage {
   snippet?: string;
 }
 
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+const ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ', thinsp: ' ', zwnj: '', zwj: '', shy: '',
+  rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', ndash: '–', mdash: '—', hellip: '…',
+  bull: '•', middot: '·', copy: '©', reg: '®', trade: '™', euro: '€', pound: '£',
+};
 
 export function decodeEntities(s: string): string {
   return s.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (m, e: string) => {
@@ -30,10 +34,20 @@ export function decodeEntities(s: string): string {
   });
 }
 
+/**
+ * Readable text from a message body. Some senders put HTML escapes (&nbsp; &#39;) or tags
+ * (<br>, <p>) into the plain-text part as well; those are turned into what they stand for.
+ */
+export function cleanBody(text: string): string {
+  if (/<(br|p|div|span|table|td|li|a)\b[^>]*>/i.test(text)) return stripHtml(text);
+  if (!/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return text;
+  return decodeEntities(text).replace(/\u00a0/g, ' ');
+}
+
 /** Very small HTML → text conversion good enough for recruiter mail. */
 export function stripHtml(html: string): string {
   let s = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '');
-  s = s.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n').replace(/<li[^>]*>/gi, '• ');
+  s = s.replace(/<br\s*\/?>/gi, '\n').replace(/<(p|div|tr|h[1-6])\b[^>]*>/gi, '\n').replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n').replace(/<li[^>]*>/gi, '• ');
   s = s.replace(/<[^>]+>/g, '');
   s = decodeEntities(s);
   return s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -81,7 +95,7 @@ export function parseMessage(m: GmailMessage, myEmail: string): ParsedMessage {
   const from = parseAddress(header(p, 'From'));
   const out = { plain: [] as string[], html: [] as string[], atts: [] as Attachment[] };
   walk(p, out);
-  let body = out.plain.join('\n').trim();
+  let body = cleanBody(out.plain.join('\n').trim());
   if (!body && out.html.length) body = stripHtml(out.html.join('\n'));
   if (!body) body = m.snippet || '';
   const dateMs = m.internalDate ? parseInt(m.internalDate, 10) : Date.parse(header(p, 'Date')) || Date.now();
