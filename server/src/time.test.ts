@@ -40,6 +40,8 @@ describe('date and time extraction', () => {
     expect(relLabel('2026-10-25T20:00:00', new Date('2026-10-26T09:12:00'))).toBe('Yesterday');
     expect(nextBusinessDays('2026-10-24', 3)).toEqual(['2026-10-26', '2026-10-27', '2026-10-28']);
     expect(zoneToEt('PT')).toBe(3);
+    expect(zoneToEt('ADT')).toBe(-1);
+    expect(extractDateTimes('Your interview is Wed Oct 28 at 10 PM ADT', REF)[0]).toMatchObject({ start: 10 + 12, zone: 'ADT' });
     expect(zoneToEt(undefined)).toBe(0);
   });
 });

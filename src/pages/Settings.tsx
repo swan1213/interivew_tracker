@@ -2,7 +2,7 @@ import { useStore } from '@/store/store';
 import { provider } from '@/data/provider';
 import { DN } from '@/data/constants';
 import type { AiKey, NotifKey, ThemePref, Tone, Tz } from '@/data/types';
-import { fmtT, hrs, tzOffset } from '@/lib/time';
+import { fmtT, hrs, TIME_ZONES, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Seg, Switch } from '@/ui/bits';
 
@@ -63,9 +63,11 @@ export function SettingsPage() {
               Default time zone
             </label>
             <select id="tz2" className="sel" style={{ width: '100%', height: 32 }} value={S.tz} onChange={(e) => st.setS((x) => void (x.tz = e.target.value as Tz))}>
-              <option value="ET">Eastern Time (ET)</option>
-              <option value="PT">Pacific Time (PT)</option>
-              <option value="UTC">UTC</option>
+              {TIME_ZONES.map((z) => (
+                <option key={z.k} value={z.k}>
+                  {z.l}
+                </option>
+              ))}
             </select>
           </div>
           <div>

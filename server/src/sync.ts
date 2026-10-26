@@ -33,8 +33,10 @@ export interface SyncOutcome {
 /** Conversations fetched from Gmail at once, and messages classified at once (model calls take seconds each). */
 const FETCH_WIDTH = 8;
 const CLASSIFY_WIDTH = 5;
-/** Share of the time budget spent downloading; the rest goes to classifying and saving. */
-const FETCH_SHARE = 0.45;
+/** Time kept back from downloading, before the deadline, for classifying and saving what was fetched. */
+const FETCH_RESERVE_MS = 15_000;
+/** Newest messages whose read/starred/inbox state is refreshed each sync; older mail rarely changes. */
+const LABEL_WINDOW = 500;
 /** Time kept back from model calls (each can take several seconds) for the last ones to finish and the save. */
 const MODEL_RESERVE_MS = 12_000;
 
@@ -72,11 +74,13 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
 
   // Refresh read/starred/archived on known messages with three searches rather than
   // one request per message, which used up Gmail's per-minute quota on large mailboxes.
-  const knownIds = ids.filter((id) => known.has(id));
+  // Only the newest LABEL_WINDOW: any of those that is unread (starred, in the inbox) is
+  // also among the newest LABEL_WINDOW unread (starred, inbox) ones, so each search is complete for them.
+  const knownIds = ids.slice(0, LABEL_WINDOW).filter((id) => known.has(id));
   if (knownIds.length) {
     try {
       const [unread, starred, inbox] = await Promise.all(
-        Object.keys(LABEL_QUERIES).map(async (label) => new Set(await api.listMessageIds(cfg.syncQuery + ' ' + LABEL_QUERIES[label], cfg.maxMessages))),
+        Object.keys(LABEL_QUERIES).map(async (label) => new Set(await api.listMessageIds(cfg.syncQuery + ' ' + LABEL_QUERIES[label], LABEL_WINDOW))),
       );
       for (const id of knownIds) {
         const pm = known.get(id)?.messages.find((x) => x.id === id);
@@ -98,7 +102,8 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   // along even when they are older than the newest GMAIL_MAX_MESSAGES.
   // Newest first (the order Gmail lists them); a large backlog is worked through over several syncs.
   const waiting = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
-  const fetchUntil = Date.now() + cfg.syncBudgetMs * FETCH_SHARE;
+  // Measured from the request's deadline: listing and the checks above can take a while on a big mailbox.
+  const fetchUntil = deadline - FETCH_RESERVE_MS;
   let fetched = 0;
   await pooled(waiting.slice(0, cfg.syncBatch), FETCH_WIDTH, async (threadId) => {
     if (Date.now() >= fetchUntil) return;

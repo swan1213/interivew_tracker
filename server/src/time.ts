@@ -7,7 +7,7 @@ const MONTHS: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4,
 /** Hours to add to a time expressed in `zone` to get Eastern time (the app's base zone). */
 export function zoneToEt(zone?: string): number {
   const z = (zone || 'ET').toUpperCase();
-  const map: Record<string, number> = { ET: 0, EST: 0, EDT: 0, CT: 1, CST: 1, CDT: 1, MT: 2, MST: 2, MDT: 2, PT: 3, PST: 3, PDT: 3, UTC: -4, GMT: -4 };
+  const map: Record<string, number> = { AST: -1, ADT: -1, ET: 0, EST: 0, EDT: 0, CT: 1, CST: 1, CDT: 1, MT: 2, MST: 2, MDT: 2, PT: 3, PST: 3, PDT: 3, UTC: -4, GMT: -4 };
   return map[z] ?? 0;
 }
 
@@ -98,7 +98,7 @@ export function businessDaysBetween(a: string, b: string): string[] {
 }
 
 const DATE_RE = /\b(?:(mon|tue|wed|thu|fri|sat|sun)[a-z]*,?\s+)?(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b|\b(today|tomorrow)\b|\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/gi;
-const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?:\s*(?:to|-|–|—|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.))?(?:\s*(ET|EST|EDT|PT|PST|PDT|CT|CST|CDT|MT|MST|MDT|UTC|GMT))?\b/gi;
+const TIME_RE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?:\s*(?:to|-|–|—|until)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.))?(?:\s*(ET|EST|EDT|AST|ADT|PT|PST|PDT|CT|CST|CDT|MT|MST|MDT|UTC|GMT))?\b/gi;
 const DEADLINE_CUE = /\b(by|before|no later than|due|deadline|until|submit(?:ted)? by|return(?:ed)? by)\b/i;
 const ORIGINAL_CUE = /\b(move|reschedul\w*|original(?:ly)?|current(?:ly)?|instead of|was (?:set|scheduled)|previously)\b/i;
 

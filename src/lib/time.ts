@@ -1,9 +1,32 @@
 import type { Tz } from '@/data/types';
 import { DN, MN } from '@/data/constants';
 
-/** Hour offset to apply to stored ET hours for display in the given zone. */
-export function tzOffset(tz: Tz): number {
-  return { ET: 0, PT: -3, UTC: 4 }[tz] ?? 0;
+/** The display zones offered in Settings and on the Calendar, with the IANA zone that defines each. */
+export const TIME_ZONES: { k: Tz; l: string; short: string; zone: string }[] = [
+  { k: 'ET', l: 'Eastern Time (ET)', short: 'Eastern (ET)', zone: 'America/New_York' },
+  { k: 'AST', l: 'Atlantic Time (AST)', short: 'Atlantic (AST)', zone: 'America/Halifax' },
+  { k: 'PT', l: 'Pacific Time (PT)', short: 'Pacific (PT)', zone: 'America/Los_Angeles' },
+  { k: 'UTC', l: 'UTC', short: 'UTC', zone: 'UTC' },
+];
+
+/** Minutes `zone` is ahead of UTC at `at`. */
+function utcOffsetMin(zone: string, at: Date): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric' })
+      .formatToParts(at)
+      .map((x) => [x.type, Number(x.value)]),
+  );
+  return Math.round((Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - at.getTime()) / 60000);
+}
+
+/**
+ * Hour offset to apply to stored ET hours for display in the given zone, from the real
+ * zone rules at `at`, so daylight saving changes (and zones that don't observe it) are right.
+ */
+export function tzOffset(tz: Tz, at: Date = new Date()): number {
+  const zone = TIME_ZONES.find((z) => z.k === tz)?.zone;
+  if (!zone || tz === 'ET') return 0;
+  return (utcOffsetMin(zone, at) - utcOffsetMin('America/New_York', at)) / 60;
 }
 
 /** 13.5 → "1:30 PM" */

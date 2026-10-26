@@ -4,7 +4,7 @@ import { provider } from '@/data/provider';
 import { DN, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, MFULL, MN, STG } from '@/data/constants';
 import type { Account, CalEvent, CalView } from '@/data/types';
 import { activeEvents, conflictPairs, conflictsOf, isInterview, layoutLanes, type Lane } from '@/lib/calendar';
-import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, tzOffset } from '@/lib/time';
+import { addD, dObj, fmtT, hourLab, hrs, iso, lab, minutesLabel, mondayOf, rel, TIME_ZONES, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, Empty, Fact, Seg } from '@/ui/bits';
@@ -122,9 +122,11 @@ export function CalendarPage() {
         <label className="ln mini">
           Time zone
           <select className="sel" value={S.tz} onChange={(e) => st.setS((x) => void (x.tz = e.target.value as typeof x.tz))}>
-            <option value="ET">Eastern (ET)</option>
-            <option value="PT">Pacific (PT)</option>
-            <option value="UTC">UTC</option>
+            {TIME_ZONES.map((z) => (
+              <option key={z.k} value={z.k}>
+                {z.short}
+              </option>
+            ))}
           </select>
         </label>
         {calendarSources(st.accts).map((c) => (

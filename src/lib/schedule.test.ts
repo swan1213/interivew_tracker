@@ -40,6 +40,16 @@ describe('scheduling dialog model', () => {
     expect(m.count).toBe('3 of 3 selected');
   });
 
+  it('lets you offer more times than the email asked for, up to five', () => {
+    const sel = [9, 10, 11, 12, 13].map((h) => slotKey('2026-10-27', h));
+    const m = buildSched(email('e1'), 'avail', sel, DEFAULT_SETTINGS, active);
+    expect(m.max).toBe(5);
+    expect(m.cantGen).toBe(false);
+    expect(m.count).toBe('5 selected (3 requested, up to 5)');
+    expect(m.sub).toContain('Choose 3 to 5 times to offer (3 requested).');
+    expect(buildSched(email('e1'), 'resched', [], DEFAULT_SETTINGS, active).max).toBe(1);
+  });
+
   it('skips days outside the configured availability', () => {
     const S = { ...DEFAULT_SETTINGS, whDays: [1, 3] }; // Mon, Wed only
     const m = buildSched(email('e1'), 'avail', [], S, active);

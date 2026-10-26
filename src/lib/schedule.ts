@@ -18,8 +18,17 @@ export interface SchedVM {
   days: SchedDay[];
   count: string;
   cantGen: boolean;
+  /** Times the email asked for: the least to offer. */
   need: number;
+  /** Most times that can be picked. */
+  max: number;
 }
+
+/** Most availability slots you can offer, even when the email asks for fewer. */
+export const MAX_OFFER = 5;
+
+/** How many slots can be picked: one proposed time when rescheduling, else up to MAX_OFFER (or more if the email asks for more). */
+export const maxPick = (mode: SchedMode, need: number): number => (mode === 'resched' ? 1 : Math.max(need, MAX_OFFER));
 
 export type SchedMode = 'avail' | 'resched';
 
@@ -36,7 +45,7 @@ export function parseSlotKey(k: string): { date: string; start: number } {
  * the recruiter named; reschedule mode offers exactly the recruiter's options.
  */
 export function buildSched(e: Email | undefined, mode: SchedMode, sel: string[], S: Settings, active: CalEvent[]): SchedVM {
-  if (!e) return { title: '', sub: '', hint: '', days: [], count: '', cantGen: true, need: 1 };
+  if (!e) return { title: '', sub: '', hint: '', days: [], count: '', cantGen: true, need: 1, max: 1 };
   const off = tzOffset(S.tz);
   const tz = S.tz;
   const days: SchedDay[] = [];
@@ -78,20 +87,31 @@ export function buildSched(e: Email | undefined, mode: SchedMode, sel: string[],
   }
 
   const need = mode === 'resched' ? 1 : e.need || 1;
+  const max = maxPick(mode, need);
   const who = isPersonName(e.recruiter) ? firstName(e.recruiter) : 'the recruiter';
   const company = e.company || 'the recruiter';
   return {
     title: mode === 'resched' ? 'Pick a new time with ' + company : 'Schedule interview: ' + company,
     sub:
-      (mode === 'resched' ? 'Choose one of the times ' + who + ' proposed. ' : 'Choose ' + need + ' time' + (need > 1 ? 's' : '') + ' to offer. ') +
+      (mode === 'resched'
+        ? 'Choose one of the times ' + who + ' proposed. '
+        : 'Choose ' + (need < max ? need + ' to ' + max : need) + ' times to offer' + (need > 1 ? ' (' + need + ' requested). ' : '. ')) +
       'Times shown in ' + tz + '.',
     hint:
       mode === 'resched'
         ? 'Times that overlap an existing event are crossed out. Nothing is confirmed until ' + company + ' replies.'
         : 'Slots follow your availability (' + fmtT(hrs(S.whStart) + off) + ' to ' + fmtT(hrs(S.whEnd) + off) + ' ' + tz + '). Crossed-out slots conflict with your calendar. Sending availability does not confirm an interview.',
     days,
-    count: mode === 'resched' ? (sel.length ? '1 option selected' : 'Select one option') : sel.length + ' of ' + need + ' selected',
+    count:
+      mode === 'resched'
+        ? sel.length
+          ? '1 option selected'
+          : 'Select one option'
+        : sel.length <= need
+          ? sel.length + ' of ' + need + ' selected'
+          : sel.length + ' selected (' + need + ' requested, up to ' + max + ')',
     cantGen: sel.length < need,
     need,
+    max,
   };
 }

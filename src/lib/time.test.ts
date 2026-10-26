@@ -40,6 +40,14 @@ describe('time helpers', () => {
     expect(slotLabel('2026-10-27', 11, tzOffset('PT'), 'PT')).toBe('Tue, Oct 27 at 8:00 AM PT');
   });
 
+  it('offsets follow the real zone rules, including daylight saving', () => {
+    const summer = new Date('2026-10-26T15:00:00Z');
+    const winter = new Date('2026-12-01T15:00:00Z');
+    expect([tzOffset('AST', summer), tzOffset('PT', summer), tzOffset('UTC', summer)]).toEqual([1, -3, 4]);
+    expect([tzOffset('AST', winter), tzOffset('PT', winter), tzOffset('UTC', winter)]).toEqual([1, -3, 5]);
+    expect(slotLabel('2026-10-27', 11, tzOffset('AST', summer), 'AST')).toBe('Tue, Oct 27 at 12:00 PM AST');
+  });
+
   it('describes durations', () => {
     expect(durationWords({ start: 11, end: 12 })).toBe('one hour');
     expect(durationWords({ start: 13, end: 15 })).toBe('two hours');

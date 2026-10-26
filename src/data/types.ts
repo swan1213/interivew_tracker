@@ -11,7 +11,7 @@ export type EvStage = 'screen' | 'tech' | 'mgr' | 'final' | 'offer' | 'busy';
 export type IvStatus = 'none' | 'awaiting' | 'confirmed';
 export type EmailMode = 'avail' | 'confirm' | 'resched' | 'assess';
 export type Tone = 'professional' | 'friendly' | 'concise' | 'confident';
-export type Tz = 'ET' | 'PT' | 'UTC';
+export type Tz = 'ET' | 'AST' | 'PT' | 'UTC';
 export type Page = 'dash' | 'inbox' | 'cal' | 'track' | 'analytics' | 'accounts' | 'team' | 'settings';
 /** Workspace role: admin manages roles, member uses everything else, guest sees Analytics only. */
 export type Role = 'admin' | 'member' | 'guest';

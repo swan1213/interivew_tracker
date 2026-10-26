@@ -12,7 +12,7 @@ import { genText, type ReplyOpts } from '@/lib/reply';
 import { forwardBlock, inView, isNoReply, replyRecipients, replySubject, type RangeFilter } from '@/lib/mail';
 import { activeEvents, conflictOf } from '@/lib/calendar';
 import { fmtT, lab, rel, tzOffset } from '@/lib/time';
-import { parseSlotKey, type SchedMode } from '@/lib/schedule';
+import { maxPick, parseSlotKey, type SchedMode } from '@/lib/schedule';
 import { loadJSON, removeKey, saveJSON } from '@/lib/storage';
 import {
   canManageRoles, canSee, currentRole, homePage, newMemberError, removeMemberError, restoreMeId, restoreMembers, roleChangeError, roleMeta, upsertMember,
@@ -297,7 +297,9 @@ export const useStore = create<AppState>()((set, get) => {
       newMessages += r.newMessages;
       if (!provider.isDemo) await get().hydrate();
       const left = (r.pending || 0) + (r.refining || 0);
-      if (r.errors?.length || !left || round + 1 >= MAX_SYNC_ROUNDS) return { ...r, newMessages };
+      // One account's error (or a timeout) doesn't stop the others' backfill; give up only when a round makes no progress.
+      const stuck = !!r.errors?.length && !r.newMessages;
+      if (stuck || !left || round + 1 >= MAX_SYNC_ROUNDS) return { ...r, newMessages };
       const n = (k: number) => k + ' conversation' + (k === 1 ? '' : 's');
       showToast(r.pending ? 'Loading older mail: ' + n(r.pending) + ' to go…' : 'All mail loaded. AI is reviewing ' + n(r.refining || 0) + '…');
     }
@@ -475,13 +477,13 @@ export const useStore = create<AppState>()((set, get) => {
     toggleSlot: (key) => {
       const s = get();
       const e = emailOf(s, s.selId);
-      const need = s.schedMode === 'resched' ? 1 : e?.need || 1;
       if (s.schedMode === 'resched') {
         set({ schedSel: [key] });
         return;
       }
+      const max = maxPick(s.schedMode, e?.need || 1);
       if (s.schedSel.includes(key)) set({ schedSel: s.schedSel.filter((k) => k !== key) });
-      else if (s.schedSel.length >= need) showToast('Select up to ' + need + ' times. Deselect one first.');
+      else if (s.schedSel.length >= max) showToast('You can offer up to ' + max + ' times. Deselect one first.');
       else set({ schedSel: s.schedSel.concat([key]) });
     },
     genSchedReply: () => {
