@@ -5,7 +5,7 @@ import { decrypt, encrypt } from './crypto';
 import { busyEvents, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
 import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot, conversationGroups } from './derive';
 import { hasCalendar } from './google/calendar';
-import { buildRawReply, gmailFor } from './google/gmail';
+import { buildRawReply, gmailFor, isRateLimitError } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
 import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest } from './google/oauth';
 import { redactForGuest } from './redact';
@@ -205,6 +205,7 @@ export function createApi(): express.Express {
       let newMessages = 0;
       let pending = 0;
       let refining = 0;
+      let throttled = 0;
       const errors: string[] = [];
       // Every account, and each account's mail and calendar, sync side by side.
       await Promise.all(
@@ -214,13 +215,15 @@ export function createApi(): express.Express {
               newMessages += r.newMessages;
               pending += r.pending;
               refining += r.refining;
+              if (r.throttled) throttled++;
             },
-            (e: Error) => void errors.push(a.email + ': ' + e.message),
+            // Gmail asking to slow down is not a failure: the app waits and continues.
+            (e: Error) => void (isRateLimitError(e) ? throttled++ : errors.push(a.email + ': ' + e.message)),
           ),
           hasCalendar(a) ? syncCalendar(a).catch((e: Error) => void errors.push(a.email + ' calendar: ' + e.message)) : Promise.resolve(),
         ]),
       );
-      res.json({ newMessages, pending, refining, errors });
+      res.json({ newMessages, pending, refining, throttled, errors });
     }),
   );
 

@@ -166,6 +166,21 @@ describe('receipts that describe the hiring process', () => {
     expect(c.summary).not.toContain('&nbsp;');
   });
 
+  it('ignores offers mentioned in a fraud warning, and reads curly apostrophes', () => {
+    const c = classifyHeuristic(
+      pm(
+        'Senior Data Engineer - Adoreal',
+        'Dear Joshua,\nThank you for your interest in joining Adoreal! We’ve received your application for Senior Data Engineer.\n\n' +
+          'Recruitment Fraud Notice\nAdoreal has become aware of fraudulent job offers being sent by people falsely claiming to represent us. ' +
+          'Never share personal details, banking information, or Social Security numbers as part of a job offer or interview. ' +
+          'Legitimate offers will never ask you to pay money upfront.',
+      ),
+      NOW,
+    );
+    expect(c.cat).toBe('applied');
+    expect(c.pri).not.toBe('critical');
+  });
+
   it('still treats a real offer as an offer', () => {
     expect(classifyHeuristic(pm('Your offer', 'We are pleased to offer you the Software Engineer position. Your offer letter is attached.'), NOW).cat).toBe('offer');
   });

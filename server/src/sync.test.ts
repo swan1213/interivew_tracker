@@ -169,6 +169,30 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(12);
   });
 
+  it('keeps what it fetched when Gmail asks to slow down, and continues on the next sync', async () => {
+    const { GmailError } = await import('./google/gmail');
+    const other = { ...acct, id: 'g-throttle' };
+    await store.writeAccounts([acct, other]);
+    const fresh = new mock.MockGmail();
+    fresh.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => fresh.messages.set(m.id, m));
+    const getThread = fresh.getThread.bind(fresh);
+    let allowed = 4;
+    fresh.getThread = async (id: string) => {
+      if (allowed-- <= 0) throw new GmailError(429, 'slow down');
+      return getThread(id);
+    };
+    const r = await sync.syncAccount(other, fresh, NOW);
+    expect(r.throttled).toBe(true);
+    expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(4);
+    expect(r.pending).toBe(8);
+
+    fresh.getThread = getThread;
+    const r2 = await sync.syncAccount(other, fresh, NOW);
+    expect([r2.throttled, r2.pending]).toEqual([false, 0]);
+    expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(12);
+  });
+
   it('forgets mail moved to Trash or deleted for good in Gmail', async () => {
     const ids = Object.keys((await store.readMail(acct.id)).threads);
     expect(ids).toContain('t-news');

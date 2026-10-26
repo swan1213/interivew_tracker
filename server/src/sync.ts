@@ -1,7 +1,7 @@
 import { classifyMessage, classifySent, modelWanted } from './classify';
 import { isJobRelated, RULES_VERSION } from './classify/heuristic';
 import { cfg } from './config';
-import { GmailError, gmailFor, type GmailApi } from './google/gmail';
+import { GmailError, gmailFor, isRateLimitError, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
 import { readAccounts, readMail, writeAccounts, writeMail } from './store';
 import type { StoredAccount, StoredThread } from './types';
@@ -28,6 +28,8 @@ export interface SyncOutcome {
   pending: number;
   /** Conversations shown with the rules' classification, waiting for the model. */
   refining: number;
+  /** Gmail asked to slow down; what was fetched is saved and the next sync continues. */
+  throttled: boolean;
 }
 
 /** Conversations fetched from Gmail at once, and messages classified at once (model calls take seconds each). */
@@ -105,10 +107,19 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   // Measured from the request's deadline: listing and the checks above can take a while on a big mailbox.
   const fetchUntil = deadline - FETCH_RESERVE_MS;
   let fetched = 0;
+  // A failed fetch (Gmail asking to slow down, mostly) ends this round's downloads; what came in is still saved.
+  let stopped: unknown = null;
   await pooled(waiting.slice(0, cfg.syncBatch), FETCH_WIDTH, async (threadId) => {
-    if (Date.now() >= fetchUntil) return;
+    if (stopped || Date.now() >= fetchUntil) return;
+    let raw;
+    try {
+      raw = await api.getThread(threadId);
+    } catch (e) {
+      stopped ||= e;
+      return;
+    }
     fetched++;
-    const msgs = (await api.getThread(threadId)).map((m) => parseMessage(m, acct.email));
+    const msgs = raw.map((m) => parseMessage(m, acct.email));
     if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
       msgs.forEach((pm) => skipped.add(pm.id));
       return;
@@ -160,7 +171,8 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   accountsWrite = write.catch(() => undefined);
   await write;
   const refining = Object.values(mail.threads).filter((t) => t.aiPending).length;
-  return { newMessages: added, removed, pending: waiting.length - fetched, refining };
+  if (stopped && !isRateLimitError(stopped)) throw stopped;
+  return { newMessages: added, removed, pending: waiting.length - fetched, refining, throttled: !!stopped };
 }
 
 /** Classified by an older version of the rules (the model's results are kept). */

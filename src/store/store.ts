@@ -257,7 +257,9 @@ function initialFields(): StateFields {
 let autoSyncing = false;
 
 /** Rounds one sync keeps going while older mail is still waiting, so a first sync fills in the whole window. */
-const MAX_SYNC_ROUNDS = 40;
+const MAX_SYNC_ROUNDS = 80;
+/** Pause before continuing after Gmail asks the app to slow down. */
+const THROTTLE_WAIT_MS = 30_000;
 
 export const useStore = create<AppState>()((set, get) => {
   const mapEmail = (id: string, fn: (e: Email) => Partial<Email>) =>
@@ -296,11 +298,16 @@ export const useStore = create<AppState>()((set, get) => {
       const r = await provider.sync(accountId);
       newMessages += r.newMessages;
       if (!provider.isDemo) await get().hydrate();
-      const left = (r.pending || 0) + (r.refining || 0);
+      const left = (r.pending || 0) + (r.refining || 0) + (r.throttled || 0);
       // One account's error (or a timeout) doesn't stop the others' backfill; give up only when a round makes no progress.
-      const stuck = !!r.errors?.length && !r.newMessages;
+      const stuck = !!r.errors?.length && !r.newMessages && !r.throttled;
       if (stuck || !left || round + 1 >= MAX_SYNC_ROUNDS) return { ...r, newMessages };
       const n = (k: number) => k + ' conversation' + (k === 1 ? '' : 's');
+      if (r.throttled) {
+        showToast('Gmail asked to slow down. Continuing in 30 seconds' + (r.pending ? ' (' + n(r.pending) + ' to go)' : '') + '…');
+        await new Promise((res) => setTimeout(res, THROTTLE_WAIT_MS));
+        continue;
+      }
       showToast(r.pending ? 'Loading older mail: ' + n(r.pending) + ' to go…' : 'All mail loaded. AI is reviewing ' + n(r.refining || 0) + '…');
     }
   };

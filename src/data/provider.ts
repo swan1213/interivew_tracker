@@ -13,6 +13,8 @@ export interface SyncResult {
   pending?: number;
   /** Conversations shown with a quick classification, waiting for the AI to refine them. */
   refining?: number;
+  /** Accounts Gmail asked to slow down; sync again after a short wait. */
+  throttled?: number;
   errors?: string[];
 }
 

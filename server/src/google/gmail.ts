@@ -19,8 +19,25 @@ export interface GmailApi {
 }
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
-/** Waits before retrying a rate-limited request; Gmail's per-user quota refills each minute. */
-const RETRY_MS = [2000, 5000, 10000];
+/** Waits before retrying a rate-limited request; kept short so a sync round still finishes in time. */
+const RETRY_MS = [2000, 4000];
+
+/**
+ * Gmail allows each user 250 quota units a second (a thread costs 10, a list page 5). Requests
+ * for one account are spaced to stay well under that, so a large backfill doesn't trip the limit.
+ */
+const UNITS_PER_SEC = 150;
+const pace = new Map<string, number>();
+async function spend(accountId: string, units: number): Promise<void> {
+  const now = Date.now();
+  const start = Math.max(now, pace.get(accountId) || 0);
+  pace.set(accountId, start + (units / UNITS_PER_SEC) * 1000);
+  if (start > now) await new Promise((r) => setTimeout(r, start - now));
+}
+
+export const RATE_LIMITED = 'Gmail is limiting how fast this app can read mail. It will continue shortly.';
+/** Gmail turned requests away for going too fast; waiting a little and continuing works. */
+export const isRateLimitError = (e: unknown): boolean => e instanceof GmailError && e.status === 429;
 
 /** Google's own message from an error body, without the JSON around it. */
 export function googleError(status: number, text: string): string {
@@ -61,18 +78,21 @@ export async function accessTokenFor(acct: StoredAccount): Promise<string> {
 export class RealGmail implements GmailApi {
   constructor(private acct: StoredAccount) {}
 
-  private async call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async call<T>(path: string, init: RequestInit = {}, units = 5): Promise<T> {
     for (let attempt = 0; ; attempt++) {
+      await spend(this.acct.id, units);
       const token = await accessTokenFor(this.acct);
       const r = await fetch(BASE + path, { ...init, headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json', ...(init.headers || {}) } });
       if (r.ok) return (await r.json()) as T;
       const text = await r.text().catch(() => '');
       if (isRateLimited(r.status, text)) {
+        // Slow every request for this account down, not just this one.
+        pace.set(this.acct.id, Math.max(pace.get(this.acct.id) || 0, Date.now() + RETRY_MS[Math.min(attempt, RETRY_MS.length - 1)]));
         if (attempt < RETRY_MS.length) {
           await new Promise((res) => setTimeout(res, RETRY_MS[attempt]));
           continue;
         }
-        throw new Error('Gmail is limiting how fast this app can read mail. Wait a minute, then sync again.');
+        throw new GmailError(429, RATE_LIMITED);
       }
       throw new GmailError(r.status, 'Gmail API ' + r.status + ': ' + googleError(r.status, text));
     }
@@ -98,7 +118,7 @@ export class RealGmail implements GmailApi {
   }
 
   async getThread(threadId: string): Promise<GmailMessage[]> {
-    return (await this.call<{ messages?: GmailMessage[] }>('/threads/' + encodeURIComponent(threadId) + '?format=full')).messages || [];
+    return (await this.call<{ messages?: GmailMessage[] }>('/threads/' + encodeURIComponent(threadId) + '?format=full', {}, 10)).messages || [];
   }
 
   getMessage(id: string, format: 'full' | 'minimal' = 'full'): Promise<GmailMessage> {
@@ -106,11 +126,11 @@ export class RealGmail implements GmailApi {
   }
 
   async modifyThread(threadId: string, add: string[], remove: string[]): Promise<void> {
-    await this.call('/threads/' + encodeURIComponent(threadId) + '/modify', { method: 'POST', body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }) });
+    await this.call('/threads/' + encodeURIComponent(threadId) + '/modify', { method: 'POST', body: JSON.stringify({ addLabelIds: add, removeLabelIds: remove }) }, 10);
   }
 
   send(raw: string, threadId?: string): Promise<{ id: string }> {
-    return this.call<{ id: string }>('/messages/send', { method: 'POST', body: JSON.stringify({ raw, ...(threadId ? { threadId } : {}) }) });
+    return this.call<{ id: string }>('/messages/send', { method: 'POST', body: JSON.stringify({ raw, ...(threadId ? { threadId } : {}) }) }, 100);
   }
 }
 
