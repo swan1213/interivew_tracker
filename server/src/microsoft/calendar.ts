@@ -97,8 +97,12 @@ export class OutlookCalendar implements CalendarApi {
     return (await graphAll<GraphEvent>(this.acct, '/me/calendarView?' + q, 1000, UTC)).map(toGEvent);
   }
 
+  /**
+   * Looked up in the calendar itself: an event the user deleted sits in Deleted Items under the same
+   * id, where /me/events still finds it; the calendar doesn't, so the deletion is noticed (404).
+   */
   async get(id: string): Promise<GEvent> {
-    return toGEvent(await graph<GraphEvent>(this.acct, '/me/events/' + encodeURIComponent(id) + '?$select=' + FIELDS + '&' + EXPAND, {}, UTC));
+    return toGEvent(await graph<GraphEvent>(this.acct, '/me/calendar/events/' + encodeURIComponent(id) + '?$select=' + FIELDS + '&' + EXPAND, {}, UTC));
   }
 
   async insert(ev: GEvent): Promise<GEvent> {

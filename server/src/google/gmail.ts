@@ -1,7 +1,7 @@
 import { cfg, tokenSecret } from '../config';
 import { b64url, decrypt, encrypt } from '../crypto';
 import type { GmailMessage } from '../mime';
-import { readAccounts, writeAccounts } from '../store';
+import { updateAccounts } from '../store';
 import type { StoredAccount } from '../types';
 import { msRefreshAccessToken } from '../microsoft/oauth';
 import { OutlookMail } from '../microsoft/mail';
@@ -73,7 +73,9 @@ export async function accessTokenFor(acct: StoredAccount): Promise<string> {
   acct.accessToken = encrypt(t.access_token, secret);
   acct.expiresAt = Date.now() + t.expires_in * 1000;
   if (t.refresh_token) acct.refreshToken = encrypt(t.refresh_token, secret);
-  await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? acct : a)));
+  // Only the token fields: the rest of the record may have changed since this copy was read.
+  const { accessToken, expiresAt, refreshToken } = acct;
+  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, accessToken, expiresAt, refreshToken } : a)));
   return t.access_token;
 }
 

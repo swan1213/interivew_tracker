@@ -75,13 +75,19 @@ export function Analytics() {
     ')';
 
   const f = funnel(inRange);
+  // Tiles count companies (two offer emails from one company are one offer); the table above counts emails.
+  // Each tile shows both so the numbers can be matched up.
+  const plural = (n: number, one: string, many = one + 's') => n + ' ' + (n === 1 ? one : many);
+  const cos = (n: number) => (n === 1 ? 'company' : 'companies');
+  const mailN = (cats: string[]) => inRange.filter((r) => cats.includes(r.cat)).length;
+  const ofCos = (n: number) => n + ' of ' + plural(f.applications, 'company', 'companies');
   const tiles = [
-    { label: 'Applications', n: String(f.applications), tip: 'Companies you have recruitment mail with in this range' },
-    { label: 'Reached an interview', n: String(f.interviewed), tip: 'Companies that invited you, asked for your availability or confirmed an interview' },
-    { label: 'Interview conversion', n: pct(f.interviewed, f.applications, 1), tip: f.interviewed + ' of ' + f.applications + ' companies reached an interview' },
-    { label: 'Response rate', n: pct(f.responded, f.applications), tip: f.responded + ' of ' + f.applications + ' companies wrote back beyond an application receipt' },
-    { label: 'Rejection rate', n: pct(f.rejected, f.applications), tip: f.rejected + ' of ' + f.applications + ' companies sent a rejection' },
-    { label: 'Offers received', n: String(f.offers), tip: 'Companies that sent an offer' },
+    { label: 'Applications', n: String(f.applications), sub: cos(f.applications) + ' · ' + plural(inRange.filter((r) => isRecruitment(r.cat)).length, 'email'), tip: 'Companies you have recruitment mail with in this range' },
+    { label: 'Reached an interview', n: String(f.interviewed), sub: cos(f.interviewed) + ' · ' + plural(mailN(['invite', 'avail', 'confirmed', 'offer']), 'email'), tip: 'Companies that invited you, asked for your availability or confirmed an interview' },
+    { label: 'Interview conversion', n: pct(f.interviewed, f.applications, 1), sub: ofCos(f.interviewed), tip: f.interviewed + ' of ' + f.applications + ' companies reached an interview' },
+    { label: 'Response rate', n: pct(f.responded, f.applications), sub: ofCos(f.responded), tip: f.responded + ' of ' + f.applications + ' companies wrote back beyond an application receipt' },
+    { label: 'Rejection rate', n: pct(f.rejected, f.applications), sub: ofCos(f.rejected), tip: f.rejected + ' of ' + f.applications + ' companies sent a rejection' },
+    { label: 'Offers received', n: String(f.offers), sub: cos(f.offers) + ' · ' + plural(mailN(['offer']), 'email'), tip: 'Companies that sent an offer; several emails from one company count once' },
   ];
 
   const weeks = weekly(recs, st.today);
@@ -140,7 +146,7 @@ export function Analytics() {
         </div>
         <div className="cb">
           <div className="mut" style={{ marginBottom: 8 }}>
-            {scope}. Action needed counts emails still waiting on you, whatever their category.
+            {scope}. Every count here is emails; the tiles further down count companies. Action needed counts emails still waiting on you, whatever their category.
           </div>
           <div className="atw">
             <table className="atab">
@@ -227,11 +233,12 @@ export function Analytics() {
           <div className="kpi" key={k.label} title={k.tip}>
             <span className="l">{k.label}</span>
             <span className="n">{k.n}</span>
+            <span className="s">{k.sub}</span>
           </div>
         ))}
       </div>
       <div className="mut" style={{ margin: '-6px 0 14px' }}>
-        Per company, {rangeLabel.toLowerCase()}: each company you have recruitment mail with counts as one application.
+        Per company, {rangeLabel.toLowerCase()}: each company you have recruitment mail with counts as one application, and several emails from one company count once.
       </div>
 
       <div className="dgrid">

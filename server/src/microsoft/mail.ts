@@ -7,7 +7,7 @@ import { b64url } from '../crypto';
 import { GmailError, searchesBin, type GmailApi } from '../google/gmail';
 import type { GmailMessage, GmailPart } from '../mime';
 import type { StoredAccount } from '../types';
-import { graph, graphAll, odataString, type GraphOpts } from './graph';
+import { graph, graphAll, odataString, type GraphOpts, type Page } from './graph';
 
 interface Recipient { emailAddress?: { name?: string; address?: string } }
 export interface GraphMessage {
@@ -28,6 +28,9 @@ export interface GraphMessage {
   body?: { contentType?: string; content?: string };
   attachments?: { id?: string; name?: string; size?: number; isInline?: boolean }[];
 }
+
+/** A message as listings return it: just enough to find its conversation and folder. */
+type ListRow = { id: string; conversationId?: string; parentFolderId?: string; isDraft?: boolean };
 
 /** Ids of the well-known folders that decide a message's labels. */
 export interface Folders { inbox: string; sentitems: string; deleteditems: string; junkemail: string; drafts: string }
@@ -104,7 +107,8 @@ export class OutlookMail implements GmailApi {
   folders(): Promise<Folders> {
     let p = folderCache.get(this.acct.id);
     if (!p) {
-      const one = (wk: string) => this.get<{ id: string }>('/me/mailFolders/' + wk + '?$select=id').then((x) => x.id, () => '');
+      // A failed lookup must not be cached as "no such folder" (every message would lose its INBOX label), so errors propagate.
+      const one = (wk: string) => this.get<{ id: string }>('/me/mailFolders/' + wk + '?$select=id').then((x) => x.id);
       p = Promise.all(['inbox', 'sentitems', 'deleteditems', 'junkemail', 'drafts'].map(one)).then(([inbox, sentitems, deleteditems, junkemail, drafts]) => ({ inbox, sentitems, deleteditems, junkemail, drafts }));
       p.catch(() => folderCache.delete(this.acct.id));
       folderCache.set(this.acct.id, p);
@@ -117,22 +121,35 @@ export class OutlookMail implements GmailApi {
     const f = await this.folders();
     const page = '$top=' + Math.min(500, Math.max(1, max)) + '&$select=' + LIST_FIELDS;
     const since = q.since ? 'receivedDateTime ge ' + q.since : '';
-    let rows: { id: string; conversationId?: string; parentFolderId?: string; isDraft?: boolean }[];
+    let rows: ListRow[];
     if (q.bin) {
       const inFolder = (wk: string) => graphAll<{ id: string; conversationId?: string }>(this.acct, '/me/mailFolders/' + wk + '/messages?' + page, max, { fail: mailError });
       rows = (await Promise.all([inFolder('deleteditems'), inFolder('junkemail')])).flat();
     } else {
       const filter = [since, q.unread ? 'isRead eq false' : '', q.flagged ? "flag/flagStatus eq 'flagged'" : ''].filter(Boolean).join(' and ');
       const base = (q.inbox ? '/me/mailFolders/inbox/messages?' : '/me/messages?') + page + (filter ? '&$filter=' + encodeURIComponent(filter) : '');
-      // Newest first, like Gmail; Graph refuses some filter + sort combinations, so fall back to unsorted.
-      rows = await graphAll<{ id: string; conversationId?: string; parentFolderId?: string; isDraft?: boolean }>(this.acct, base + '&$orderby=receivedDateTime%20desc', max, { fail: mailError }).catch((e) =>
-        e instanceof GmailError && e.status === 400 ? graphAll(this.acct, base, max, { fail: mailError }) : Promise.reject(e),
-      );
-      // Like the Gmail search (-in:spam -in:trash), and drafts aren't mail yet.
+      // Like the Gmail search (-in:spam -in:trash), and drafts aren't mail yet. Filtered page by page, so `max`
+      // rows that pass are returned: the label refresh relies on the newest `max` being complete.
       const out = new Set([f.deleteditems, f.junkemail, f.drafts].filter(Boolean));
-      rows = rows.filter((m) => !m.isDraft && !out.has(m.parentFolderId || ''));
+      const keep = (m: ListRow) => !m.isDraft && !out.has(m.parentFolderId || '');
+      // Newest first, like Gmail; Graph refuses some filter + sort combinations, so fall back to unsorted.
+      rows = await this.listKept(base + '&$orderby=receivedDateTime%20desc', max, keep).catch((e) =>
+        e instanceof GmailError && e.status === 400 ? this.listKept(base, max, keep) : Promise.reject(e),
+      );
     }
     return rows.slice(0, max).map((m) => ({ id: m.id, threadId: m.conversationId || m.id }));
+  }
+
+  /** Pages through a listing until `max` rows pass `keep` (or the listing ends). */
+  private async listKept<T>(path: string, max: number, keep: (row: T) => boolean): Promise<T[]> {
+    const rows: T[] = [];
+    let next: string | undefined = path;
+    while (next && rows.length < max) {
+      const pageOf: Page<T> = await this.get<Page<T>>(next);
+      rows.push(...(pageOf.value || []).filter(keep));
+      next = pageOf['@odata.nextLink'];
+    }
+    return rows.slice(0, max);
   }
 
   async listMessageIds(query: string, max: number): Promise<string[]> {

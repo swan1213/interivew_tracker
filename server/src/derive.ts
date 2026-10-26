@@ -235,7 +235,11 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
 
   // Calendar events from confirmed interviews with a concrete time.
   const events: CalEvent[] = [];
-  const windowStart = new Date(now.getTime() - 86_400_000).toISOString().slice(0, 10);
+  // Days safely inside the window the calendar sync pulls (now − 1 day to now + 60 days, by instant):
+  // today to 59 days ahead, so an event near the window's edges is never mistaken for a deleted one.
+  const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  const windowStart = day(now.getTime());
+  const windowEnd = day(now.getTime() + 59 * 86_400_000);
   for (const a of accounts) {
     const mail = mails[a.id];
     if (!mail) continue;
@@ -245,10 +249,12 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
       const id = a.id + ':' + t.id;
       const e = emails.find((x) => x.id === id);
       if (!e) continue;
-      const gcal = hasCalendar(a) ? busy[a.id] : undefined;
+      // A Google Calendar event id only means something on a Google calendar: an invitation sent to an
+      // Outlook mailbox is a different event there.
+      const gcal = a.provider === 'Gmail' && hasCalendar(a) ? busy[a.id] : undefined;
       const eid = gcal ? t.messages.map((m) => calendarEventId(m.bodyText)).find(Boolean) : '';
       // Inside the window the calendar sync covers, Google's copy is the truth.
-      if (gcal && eid && cls.event.date >= windowStart) {
+      if (gcal && eid && cls.event.date >= windowStart && cls.event.date <= windowEnd) {
         const onCal = gcal.find((b) => isGoogleEvent(b.id, a.id, eid));
         e.evId = onCal?.id;
         if (!onCal) e.evRemoved = true;

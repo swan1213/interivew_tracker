@@ -193,6 +193,19 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(12);
   });
 
+  it('skips a conversation that comes back empty instead of failing the round', async () => {
+    const other = { ...acct, id: 'g-empty' };
+    await store.writeAccounts([acct, other]);
+    const fresh = new mock.MockGmail();
+    fresh.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => fresh.messages.set(m.id, m));
+    const getThread = fresh.getThread.bind(fresh);
+    fresh.getThread = async (id: string) => (id === 't-e1' ? [] : getThread(id));
+    const r = await sync.syncAccount(other, fresh, NOW);
+    expect(r.throttled).toBe(false);
+    expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(11);
+  });
+
   it('forgets mail moved to Trash or deleted for good in Gmail', async () => {
     const ids = Object.keys((await store.readMail(acct.id)).threads);
     expect(ids).toContain('t-news');

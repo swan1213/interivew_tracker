@@ -113,4 +113,25 @@ describe('Outlook mail over Graph', () => {
     expect((sent.init.headers as Record<string, string>)['Content-Type']).toBe('text/plain');
     expect(Buffer.from(String(sent.init.body), 'base64').toString('utf8')).toContain('In-Reply-To: <abc@contoso.example>');
   });
+
+  it('keeps paging until enough mail survives the junk / trash filter, and does not cache a failed folder lookup', async () => {
+    let inboxFails = 1;
+    const page2 = 'https://graph.microsoft.com/v1.0/me/messages?page=2';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = new URL(url);
+        const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'Content-Type': 'application/json' } });
+        const wk = /\/me\/mailFolders\/(\w+)$/.exec(u.pathname)?.[1];
+        if (wk === 'inbox' && inboxFails-- > 0) return json({ error: { message: 'busy' } }, 500);
+        if (wk) return json({ id: (folders as Record<string, string>)[wk] });
+        if (url === page2) return json({ value: [{ id: 'm9', conversationId: 'c9', parentFolderId: 'F-IN' }] });
+        return json({ value: [{ id: 'j1', conversationId: 'cj', parentFolderId: 'F-JUNK' }, { id: 'd1', conversationId: 'cd', parentFolderId: 'F-DEL' }], '@odata.nextLink': page2 });
+      }),
+    );
+    const { OutlookMail } = await import('./mail');
+    const mail = new OutlookMail({ ...(await account()), id: 'o-paging' });
+    await expect(mail.listMessages('newer_than:60d', 1)).rejects.toBeTruthy();
+    expect(await mail.listMessages('newer_than:60d', 1)).toEqual([{ id: 'm9', threadId: 'c9' }]);
+  });
 });

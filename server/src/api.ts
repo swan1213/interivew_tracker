@@ -12,7 +12,7 @@ import { MOCK_MS_USER, MS_SCOPES, msAuthUrl, msExchangeCode, msUserInfo } from '
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
-import { mailFile, readAccounts, readMail, removeKey, writeAccounts, writeMail } from './store';
+import { mailFile, readAccounts, readMail, removeKey, updateAccounts, writeMail } from './store';
 import { syncAccount, updateStoredLabels } from './sync';
 import type { CalEvent } from '../../src/data/types';
 import type { StoredAccount } from './types';
@@ -180,7 +180,7 @@ export function createApi(): express.Express {
       lastSync: existing?.lastSync ?? null,
       scopes: (tokens.scope || '').split(' ').filter(Boolean),
     };
-    await writeAccounts(existing ? accts.map((a) => (a.id === id ? acct : a)) : accts.concat([acct]));
+    await updateAccounts((list) => (list.some((a) => a.id === id) ? list.map((a) => (a.id === id ? acct : a)) : list.concat([acct])));
     return 'connected=' + encodeURIComponent(id);
   };
 
@@ -374,7 +374,7 @@ export function createApi(): express.Express {
           /* best effort */
         }
       }
-      await writeAccounts(accts.filter((x) => x.id !== a.id));
+      await updateAccounts((list) => list.filter((x) => x.id !== a.id));
       await removeKey(mailFile(a.id));
       // Events already on the Google Calendar stay there; the app just stops tracking them.
       await dropCalendarAccount(a.id);

@@ -138,6 +138,29 @@ describe('push and pull with the mock calendar', () => {
     expect(await syncCalendar(acct('g2', []), cal, now)).toEqual({ busy: 1, deleted: 0 });
     expect((await readCalendar()).busy.g2.map((v) => [v.co, v.date, v.start, v.end])).toEqual([['Team sync', '2026-10-27', 15, 15.5]]);
   });
+
+  it('forgets links to past interviews so a deletion behind many old links is still noticed', async () => {
+    const { syncCalendar, readCalendar } = await import('./calendarSync');
+    const { writeJson } = await import('./store');
+    const { MockCalendar } = await import('./google/calendar');
+    const cal = new MockCalendar();
+    const now = new Date('2026-10-26T13:00:00Z');
+    // 40 interviews that are over (one linked before dates were kept), then one upcoming that the user deletes in Google.
+    const links: Record<string, { accountId: string; gid: string; date?: string }> = {};
+    for (let i = 0; i < 40; i++) links['ev-old-' + i] = { accountId: 'g3', gid: (await cal.insert({ summary: 'old', start: { dateTime: '2026-09-01T15:00:00Z' }, end: { dateTime: '2026-09-01T16:00:00Z' } })).id!, date: '2026-09-01' };
+    const undated = (await cal.insert({ summary: 'old, undated', start: { dateTime: '2026-08-01T15:00:00Z' }, end: { dateTime: '2026-08-01T16:00:00Z' } })).id!;
+    links['ev-undated'] = { accountId: 'g3', gid: undated };
+    const upcoming = (await cal.insert({ summary: 'soon', start: { dateTime: '2026-10-29T15:00:00Z' }, end: { dateTime: '2026-10-29T16:00:00Z' } })).id!;
+    links['ev-soon'] = { accountId: 'g3', gid: upcoming, date: '2026-10-29' };
+    await writeJson('calendar.json', { links, busy: {}, removed: {} });
+    await cal.remove(upcoming);
+
+    expect((await syncCalendar(acct('g3', []), cal, now)).deleted).toBe(1);
+    const c = await readCalendar();
+    expect(c.removed['ev-soon']).toBeDefined();
+    expect(Object.keys(c.links).filter((id) => c.links[id].accountId === 'g3')).toEqual([]);
+    await writeJson('calendar.json', { links: {}, busy: {}, removed: {} });
+  });
 });
 
 describe('calendar API', () => {

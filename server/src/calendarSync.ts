@@ -21,7 +21,8 @@ const PAST_DAYS = 1;
 const AHEAD_DAYS = 60;
 
 export interface CalendarStore {
-  links: Record<string, { accountId: string; gid: string }>;
+  /** App interviews on a calendar; `date` (ISO day, ET) lets past ones be forgotten instead of re-checked forever. */
+  links: Record<string, { accountId: string; gid: string; date?: string }>;
   busy: Record<string, CalEvent[]>;
   /** App interviews whose Google event was deleted there, with when that was noticed; the app takes them off its calendar. */
   removed: Record<string, string>;
@@ -53,10 +54,10 @@ export const busyEvents = (c: CalendarStore, accounts: StoredAccount[]): CalEven
 
 /** Forget an account's links and busy blocks when it is disconnected. */
 export async function dropCalendarAccount(accountId: string): Promise<void> {
-  const c = await readCalendar();
-  delete c.busy[accountId];
-  for (const [id, l] of Object.entries(c.links)) if (l.accountId === accountId) delete c.links[id];
-  await writeCalendar(c);
+  await updateCalendar((c) => {
+    delete c.busy[accountId];
+    for (const [id, l] of Object.entries(c.links)) if (l.accountId === accountId) delete c.links[id];
+  });
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0');
@@ -161,13 +162,24 @@ export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calen
   const busy = items.map((g) => toBusy(acct, g)).filter((v): v is CalEvent => !!v);
 
   // Interviews the app put on this calendar but missing from the listing: outside the
-  // window, or deleted in Google Calendar. A lookup tells which.
+  // window, or deleted in Google Calendar. A lookup tells which. Links to interviews that are
+  // over are forgotten, so the lookups stay on the ones that can still change.
   const present = new Set(items.map((g) => g.id));
-  const links = Object.entries((await readCalendar()).links).filter(([, l]) => l.accountId === acct.id && !present.has(l.gid));
+  const today = etParts(now.toISOString()).date;
+  const mine = Object.entries((await readCalendar()).links).filter(([, l]) => l.accountId === acct.id);
+  const past = new Set(mine.filter(([, l]) => l.date && l.date < addDays(today, -PAST_DAYS)).map(([id]) => id));
   const deleted: string[] = [];
-  for (const [evId, l] of links.slice(0, VERIFY_MAX)) {
+  const dated: Record<string, string> = {};
+  for (const [evId, l] of mine.filter(([id, l]) => !past.has(id) && !present.has(l.gid)).slice(0, VERIFY_MAX)) {
     try {
-      if ((await api.get(l.gid)).status === 'cancelled') deleted.push(evId);
+      const g = await api.get(l.gid);
+      if (g.status === 'cancelled') deleted.push(evId);
+      else if (!l.date && g.start?.dateTime) {
+        // Linked before dates were kept: learn the date, and forget the link if the interview is over.
+        const d = etParts(g.start.dateTime).date;
+        if (d < addDays(today, -PAST_DAYS)) past.add(evId);
+        else dated[evId] = d;
+      }
     } catch (e) {
       if (gone(e)) deleted.push(evId);
     }
@@ -179,6 +191,8 @@ export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calen
       delete c.links[id];
       c.removed[id] = now.toISOString();
     }
+    for (const id of past) delete c.links[id];
+    for (const [id, d] of Object.entries(dated)) if (c.links[id]) c.links[id].date = d;
   });
   return { busy: busy.length, deleted: deleted.length };
 }
@@ -213,7 +227,7 @@ export async function pushEvent(ev: CalEvent, accounts: StoredAccount[], apiFor:
   }
   if (!gid) gid = (await api.insert(body)).id || '';
   await updateCalendar((c) => {
-    c.links[ev.id] = { accountId: acct.id, gid };
+    c.links[ev.id] = { accountId: acct.id, gid, date: ev.date };
     // Added again from the app: no longer counts as deleted in Google.
     delete c.removed[ev.id];
   });
@@ -222,8 +236,7 @@ export async function pushEvent(ev: CalEvent, accounts: StoredAccount[], apiFor:
 
 /** Delete the Google event mirroring an app interview, if there is one. */
 export async function removeEvent(id: string, accounts: StoredAccount[], apiFor: (a: StoredAccount) => CalendarApi = calendarFor): Promise<boolean> {
-  const c = await readCalendar();
-  const link = c.links[id];
+  const link = (await readCalendar()).links[id];
   if (!link) return false;
   const acct = accounts.find((a) => a.id === link.accountId);
   if (acct) {
@@ -233,7 +246,6 @@ export async function removeEvent(id: string, accounts: StoredAccount[], apiFor:
       if (!gone(e)) throw e;
     }
   }
-  delete c.links[id];
-  await writeCalendar(c);
+  await updateCalendar((c) => void delete c.links[id]);
   return true;
 }

@@ -241,3 +241,19 @@ describe('newsletters and mailing-list mail', () => {
     expect(c.cat).not.toBe('offer');
   });
 });
+
+describe('offers with dates and deadlines', () => {
+  const offer = (bodyText: string): ParsedMessage => ({
+    id: 'o', threadId: 'to', fromName: 'Dana Reyes', fromAddr: 'dana@acme.example', to: 'me@gmail.com', subject: 'Your offer from Acme', date: '2026-10-23T15:00:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+
+  it('a real offer that mentions May or a deadline is still an offer', () => {
+    expect(classifyHeuristic(offer('We are pleased to offer you the Software Engineer role, starting May 4.'), NOW).cat).toBe('offer');
+    expect(classifyHeuristic(offer('Attached is your offer letter; please sign it before Friday.'), NOW).cat).toBe('offer');
+  });
+
+  it('a condition placed before the offer is not one', () => {
+    expect(classifyHeuristic(offer('If the team agrees, we will extend you an offer next week.'), NOW).cat).not.toBe('offer');
+  });
+});

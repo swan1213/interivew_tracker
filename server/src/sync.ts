@@ -3,7 +3,7 @@ import { isJobRelated, RULES_VERSION } from './classify/heuristic';
 import { cfg } from './config';
 import { GmailError, gmailFor, isRateLimitError, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
-import { readAccounts, readMail, writeAccounts, writeMail } from './store';
+import { readMail, updateAccounts, writeMail } from './store';
 import type { StoredAccount, StoredThread } from './types';
 
 /** The labels the UI mirrors, and the Gmail search that finds each. Order matters below. */
@@ -44,8 +44,6 @@ const MODEL_RESERVE_MS = 12_000;
 
 // One sync per account at a time: a second request (a click during an auto-sync) joins the running one.
 const running = new Map<string, Promise<SyncOutcome>>();
-// Accounts are synced in parallel; their lastSync writes to the shared accounts file are serialized.
-let accountsWrite: Promise<void> = Promise.resolve();
 
 /**
  * Pull recent mail for one account: every conversation with a new message is
@@ -120,6 +118,8 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
     }
     fetched++;
     const msgs = raw.map((m) => parseMessage(m, acct.email));
+    // Nothing left in it (moved to Trash between listing and fetching): nothing to store.
+    if (!msgs.length) return;
     if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
       msgs.forEach((pm) => skipped.add(pm.id));
       return;
@@ -165,11 +165,7 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   mail.lastSync = now.toISOString();
   await writeMail(acct.id, mail);
   acct.lastSync = mail.lastSync;
-  const write = accountsWrite.then(async () => {
-    await writeAccounts((await readAccounts()).map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
-  });
-  accountsWrite = write.catch(() => undefined);
-  await write;
+  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
   const refining = Object.values(mail.threads).filter((t) => t.aiPending).length;
   if (stopped && !isRateLimitError(stopped)) throw stopped;
   return { newMessages: added, removed, pending: waiting.length - fetched, refining, throttled: !!stopped };

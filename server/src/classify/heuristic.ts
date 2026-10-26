@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -21,8 +21,14 @@ const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your i
 /** Subjects that do ask to schedule, even when they also thank you for applying. */
 const SCHEDULING_SUBJECT = /\b(interview|schedul\w*|availability|invitation|invite|next steps?|call|chat|meet)\b/i;
 
-/** Sentences that mention an offer without making one: scam warnings and conditions. */
-const OFFER_HEDGE = /\b(fraud\w*|scam\w*|phishing|suspicious|falsely|impersonat\w*|never|beware|caution\w*|if|once|before|may|might|whether|should you)\b/i;
+/**
+ * Sentences that mention an offer without making one: scam warnings anywhere in the sentence, and
+ * conditions placed before the offer ("if we extend an offer", "before an offer"). A condition after
+ * it ("sign it before Friday") or the month May ("starting May 4") leaves a real offer alone.
+ */
+const OFFER_WARNING = /\b(fraud\w*|scam\w*|phishing|suspicious|falsely|impersonat\w*|never|beware|caution\w*)\b/i;
+const OFFER_CONDITION = /\b([Ii]f|[Oo]nce|[Bb]efore|[Ww]hether|may|might|[Ss]hould you)\b(?=[^.!?]*\boffer)/;
+const isHedged = (s: string): boolean => OFFER_WARNING.test(s) || OFFER_CONDITION.test(s);
 
 const NOREPLY = /no-?reply|do-?not-?reply|^notifications?@|^alerts?@|mailer-daemon|^noreply|^news(letter)?@|^updates?@/i;
 const NOREPLY_BODY = /\b(do not reply|please don't reply|replies are not monitored|automated (message|email|notification)|this (is an|mailbox is) (automated|unmonitored))\b/i;
@@ -191,7 +197,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   // Offers count only in plain statements, not in fraud warnings ("never share details as part of a job offer")
   // or conditions ("if we extend an offer"). "Job offer" / "formal offer" also show up where a receipt
   // describes the process ("...then we'll talk about a formal offer"), so those need more than that.
-  const plain = text.split(/(?<=[.!?])\s+|\n+/).filter((s) => !OFFER_HEDGE.test(s));
+  const plain = text.split(/(?<=[.!?])\s+|\n+/).filter((s) => !isHedged(s));
   const inPlain = (re: RegExp) => plain.some((s) => re.test(s));
   const strongOffer = inPlain(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|offer of employment)\b/i);
   const looseOffer = inPlain(/\b(job offer|formal offer)\b/i);

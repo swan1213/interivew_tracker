@@ -112,6 +112,15 @@ export const removeKey = (name: string): Promise<void> => store().del(name);
 export const readAccounts = (): Promise<StoredAccount[]> => readJson<StoredAccount[]>('accounts.json', []);
 export const writeAccounts = (a: StoredAccount[]): Promise<void> => writeJson('accounts.json', a);
 
+// Token refreshes, sync times and connects for different accounts run in parallel; their
+// read-modify-writes of the shared accounts list take turns so none overwrites another.
+let accountsQueue: Promise<unknown> = Promise.resolve();
+export function updateAccounts(fn: (accts: StoredAccount[]) => StoredAccount[]): Promise<void> {
+  const run = accountsQueue.then(async () => writeAccounts(fn(await readAccounts())));
+  accountsQueue = run.catch(() => undefined);
+  return run;
+}
+
 export const mailFile = (accountId: string): string => 'mail-' + accountId + '.json';
 export const readMail = (accountId: string): Promise<MailStore> => readJson<MailStore>(mailFile(accountId), { threads: {}, skipped: [], lastSync: null });
 export const writeMail = (accountId: string, m: MailStore): Promise<void> => writeJson(mailFile(accountId), m);

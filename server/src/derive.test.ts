@@ -55,6 +55,20 @@ describe('interviews from calendar invitations', () => {
     expect(s.emails[0]).toMatchObject({ evId: undefined, evRemoved: true });
   });
 
+  it('keeps its own event for an Outlook mailbox, where Google event ids mean nothing', () => {
+    const outlook = { ...acct, provider: 'Outlook' as const };
+    const s = buildSnapshot([outlook], { g1: { threads: { t1: invite() }, skipped: [], lastSync: null } }, now, { g1: [busy('other')] });
+    expect(s.events.map((v) => v.id)).toEqual(['ev-g1:t1']);
+    expect(s.emails[0].evRemoved).toBeUndefined();
+  });
+
+  it('keeps its own event when the interview is beyond the window the calendar sync reads', () => {
+    const far = invite();
+    far.classification!.event = { date: '2027-02-01', start: 21, end: 21.5 };
+    const s = buildSnapshot([acct], { g1: { threads: { t1: far }, skipped: [], lastSync: null } }, now, { g1: [busy('other')] });
+    expect(s.events.map((v) => v.id)).toEqual(['ev-g1:t1']);
+  });
+
   it('keeps its own event while the calendar has not been synced', () => {
     expect(snap().events.map((v) => v.id)).toEqual(['ev-g1:t1']);
   });
