@@ -129,6 +129,7 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .lhead{padding:12px 14px 8px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--bd)}
 .lhead h1{margin:0;font-size:15px;font-weight:650;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
 .frow{display:flex;gap:6px;flex-wrap:wrap}
+.drange .inp{height:30px;padding:0 8px;width:auto;font-size:12.5px}
 .sel{height:26px;border:1px solid var(--bd);border-radius:7px;background:var(--sf);padding:0 6px;font-size:12px;color:var(--tx2);max-width:100%}
 .tog{height:26px;padding:0 9px;border:1px solid var(--bd);border-radius:7px;font-size:12px;font-weight:550;color:var(--tx2);display:inline-flex;align-items:center;gap:5px}
 .tog:hover{background:var(--sf2)}

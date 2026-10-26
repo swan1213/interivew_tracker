@@ -4,7 +4,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, SAVED_FILTERS, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email } from '@/data/types';
-import { companyLine, effCat, filterEmails, firstLink, needsAction, previewOf, replySubject } from '@/lib/mail';
+import { companyLine, effCat, filterEmails, firstLink, needsAction, previewOf, RANGE_OPTIONS, rangeDays, replySubject } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { cx, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -28,6 +28,9 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
   const st = useStore();
   const title = st.peer ? 'All mail with ' + st.peer : st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
   const companies = Array.from(new Set(all.map((e) => e.company).filter(Boolean))).sort();
+  const [rFrom, rTo] = rangeDays(st, st.today);
+  // The exact days a range covers, as a hover hint on the picker.
+  const rangeTitle = rFrom || rTo ? (rFrom ? lab(rFrom) : 'Any date') + (rTo && rTo !== rFrom ? ' to ' + lab(rTo) : rTo ? '' : ' onward') : 'All dates';
   const sel = (key: keyof StateFields) => (ev: ChangeEvent<HTMLSelectElement>) => st.patch({ [key]: ev.target.value } as Partial<StateFields>);
 
   return (
@@ -86,10 +89,12 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
               </option>
             ))}
           </select>
-          <select className="sel" value={st.rangeFilter} onChange={sel('rangeFilter')} aria-label="Date range">
-            <option value="all">Any date</option>
-            <option value="today">Today</option>
-            <option value="week">Last 7 days</option>
+          <select className="sel" value={st.rangeFilter} onChange={sel('rangeFilter')} aria-label="Date range" title={rangeTitle}>
+            {RANGE_OPTIONS.map((r) => (
+              <option key={r.k} value={r.k}>
+                {r.l}
+              </option>
+            ))}
           </select>
           <select className="sel" value={st.ivFilter} onChange={sel('ivFilter')} aria-label="Interview status">
             <option value="all">Any interview status</option>
@@ -98,6 +103,23 @@ function MessageList({ all, rows }: { all: Email[]; rows: Email[] }) {
             <option value="none">No interview</option>
           </select>
         </div>
+        {st.rangeFilter === 'custom' && (
+          <div className="frow drange">
+            <label className="ln mini">
+              From
+              <input type="date" className="inp" value={st.rangeFrom} max={st.today} onChange={(ev) => st.patch({ rangeFrom: ev.target.value })} aria-label="From date" />
+            </label>
+            <label className="ln mini">
+              To
+              <input type="date" className="inp" value={st.rangeTo} max={st.today} onChange={(ev) => st.patch({ rangeTo: ev.target.value })} aria-label="To date" />
+            </label>
+            {(st.rangeFrom || st.rangeTo) && (
+              <button type="button" className="btn ghost sm" onClick={() => st.patch({ rangeFrom: '', rangeTo: '' })}>
+                Clear dates
+              </button>
+            )}
+          </div>
+        )}
         <div className="frow">
           <button type="button" className={cx('tog', st.unreadOnly && 'on')} aria-pressed={st.unreadOnly} onClick={() => st.patch({ unreadOnly: !st.unreadOnly })}>
             Unread only

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
+import type { Email } from '@/data/types';
 import type { InboxFilters } from './mail';
-import { effCat, filterEmails, inView, matchSaved, previewOf, sortEmails } from './mail';
+import { effCat, filterEmails, inView, matchSaved, previewOf, rangeDays, receivedDay, sortEmails, type RangeFilter } from './mail';
 
 const base: InboxFilters = {
-  view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all',
+  view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', today: '2026-10-26', nowHour: 9.2, ivFilter: 'all',
   unreadOnly: false, actionOnly: false, savedKey: '', q: '', sortKey: 'newest',
 };
 const data = buildDemoData();
@@ -60,9 +61,15 @@ describe('inbox filtering', () => {
     const byPri = sortEmails(data.emails, 'priority');
     expect(byPri[0].pri).toBe('critical');
     expect(byPri[byPri.length - 1].pri).toBe('low');
-    const byDl = sortEmails(data.emails, 'deadline');
+    const byDl = sortEmails(data.emails, 'deadline', '2026-10-26');
     expect(byDl[0].deadlineKey).toBe('2026-10-27');
     expect(byDl[byDl.length - 1].deadlineKey).toBe('9999');
+  });
+
+  it('puts upcoming deadlines first and passed or missing ones after, newest first', () => {
+    const mk = (id: string, deadlineKey: string, ago: number) => ({ id, deadlineKey, ago, needs: false }) as Email;
+    const list = [mk('none-new', '9999', 5), mk('past', '2026-10-01', 1), mk('later', '2026-11-05', 50), mk('soon', '2026-10-27', 90), mk('bad', '', 2), mk('today', '2026-10-26', 300)];
+    expect(sortEmails(list, 'deadline', '2026-10-26').map((e) => e.id)).toEqual(['today', 'soon', 'later', 'past', 'bad', 'none-new']);
   });
 
   it('builds a preview from the body', () => {
@@ -78,5 +85,38 @@ describe('inbox filtering', () => {
       { ...data.emails[2], id: 'other', fromAddr: 'x@y.example', peers: ['x@y.example'] },
     ];
     expect(ids(filterEmails(emails, { ...base, peer: 'sam@corp.example' }, data.apps)).sort()).toEqual(['cc', 'in']);
+  });
+});
+
+describe('date range filter', () => {
+  const at = (ago: number) => ({ ago }) as Email;
+  const range = (rangeFilter: RangeFilter, rangeFrom = '', rangeTo = '') => rangeDays({ rangeFilter, rangeFrom, rangeTo }, '2026-10-26');
+
+  it('places an email on the calendar day it arrived, not a rolling 24 hours', () => {
+    // 9:12 AM now: 9 hours ago is still today, 10 hours ago was last night.
+    expect(receivedDay(at(9 * 60), '2026-10-26', 9.2)).toBe('2026-10-26');
+    expect(receivedDay(at(10 * 60), '2026-10-26', 9.2)).toBe('2026-10-25');
+    expect(receivedDay(at(9.2 * 60 + 1440), '2026-10-26', 9.2)).toBe('2026-10-25');
+  });
+
+  it('covers the expected days for each choice', () => {
+    expect(range('today')).toEqual(['2026-10-26', '2026-10-26']);
+    expect(range('yesterday')).toEqual(['2026-10-25', '2026-10-25']);
+    expect(range('week')).toEqual(['2026-10-20', '2026-10-26']);
+    expect(range('days30')).toEqual(['2026-09-27', '2026-10-26']);
+    expect(range('month')).toEqual(['2026-10-01', '2026-10-26']);
+    expect(range('lastMonth')).toEqual(['2026-09-01', '2026-09-30']);
+    expect(range('custom', '2026-10-10', '2026-10-01')).toEqual(['2026-10-01', '2026-10-10']);
+    expect(range('custom', '2026-10-10')).toEqual(['2026-10-10', '']);
+    expect(range('all')).toEqual(['', '']);
+  });
+
+  it('filters the inbox by those days', () => {
+    const all = filterEmails(data.emails, base, data.apps);
+    const today = filterEmails(data.emails, { ...base, rangeFilter: 'today' }, data.apps);
+    const older = filterEmails(data.emails, { ...base, rangeFilter: 'custom', rangeTo: '2026-10-25' }, data.apps);
+    expect(today.length).toBeGreaterThan(0);
+    expect(today.every((e) => receivedDay(e, base.today, base.nowHour) === '2026-10-26')).toBe(true);
+    expect(today.length + older.length).toBe(all.length);
   });
 });

@@ -9,7 +9,7 @@ import { runtime } from '@/data/runtime';
 import { authApi, toMember } from '@/data/apiProvider';
 import { CAT, DATA_KEY, DATA_VERSION, GRID_END_HOUR, GRID_START_HOUR, HOUR_PX, PREFS_KEY, stageLabel } from '@/data/constants';
 import { genText, type ReplyOpts } from '@/lib/reply';
-import { forwardBlock, inView, isNoReply, replyRecipients, replySubject } from '@/lib/mail';
+import { forwardBlock, inView, isNoReply, replyRecipients, replySubject, type RangeFilter } from '@/lib/mail';
 import { activeEvents, conflictOf } from '@/lib/calendar';
 import { fmtT, lab, rel, tzOffset } from '@/lib/time';
 import { parseSlotKey, type SchedMode } from '@/lib/schedule';
@@ -24,7 +24,6 @@ import { parsePath } from './nav';
 export type ConfirmKind = '' | 'disconnect' | 'clear' | 'removeEv' | 'removeMember';
 export interface Confirm { kind: ConfirmKind; title: string; body: string; label: string; arg: string }
 export interface Mods { short: boolean; prof: boolean }
-export type RangeFilter = 'all' | 'today' | 'week';
 
 export interface Data {
   emails: Email[];
@@ -50,6 +49,8 @@ export interface StateFields extends Data {
   /** Only conversations with this address, sent or received ('' = everyone). */
   peer: string;
   rangeFilter: RangeFilter;
+  rangeFrom: string;
+  rangeTo: string;
   ivFilter: 'all' | IvStatus;
   sortKey: SortKey;
   unreadOnly: boolean;
@@ -238,7 +239,7 @@ function initialFields(): StateFields {
     emails: data.emails, apps: data.apps, events: data.events, accts: data.accts, notifs: data.notifs, activity: data.activity,
     today: clock.today, nowHour: clock.nowHour,
     page: canSee(role, route.page) ? route.page : homePage(role), view: route.view ?? 'inbox',
-    selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all',
+    selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', ivFilter: 'all',
     sortKey: 'newest', unreadOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
     tone: prefs.tone ?? 'professional', variant: 0, mods: NO_MODS, aiDraft: '', chosen: [],
     compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compTo: '', compText: '', sendOpen: false,
@@ -341,7 +342,7 @@ export const useStore = create<AppState>()((set, get) => {
       set((s) =>
         s.emails.length === 0
           ? { emails: buildDemoData().emails, selId: 'e1' }
-          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', ivFilter: 'all', unreadOnly: false, actionOnly: false, savedKey: '', q: '' },
+          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', ivFilter: 'all', unreadOnly: false, actionOnly: false, savedKey: '', q: '' },
       ),
     setSearch: (q) => set({ q, page: 'inbox', view: 'inbox', savedKey: '' }),
     showPeer: (addr) => set({ peer: addr.trim().toLowerCase(), page: 'inbox', view: 'inbox', savedKey: '', q: '' }),

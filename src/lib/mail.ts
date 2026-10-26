@@ -1,5 +1,6 @@
 import type { Application, Cat, Email, InboxView, IvStatus, Pri, SortKey } from '@/data/types';
 import { CAT, PRI_RANK, stageLabel } from '@/data/constants';
+import { addD } from './time';
 
 /** Effective category: the user's override wins over the AI classification. */
 export const effCat = (e: Email): Cat => e.catOv || e.cat;
@@ -35,6 +36,40 @@ export function matchSaved(e: Email, k: string): boolean {
   return true;
 }
 
+export type RangeFilter = 'all' | 'today' | 'yesterday' | 'week' | 'days30' | 'month' | 'lastMonth' | 'custom';
+
+export const RANGE_OPTIONS: { k: RangeFilter; l: string }[] = [
+  { k: 'all', l: 'Any date' },
+  { k: 'today', l: 'Today' },
+  { k: 'yesterday', l: 'Yesterday' },
+  { k: 'week', l: 'Last 7 days' },
+  { k: 'days30', l: 'Last 30 days' },
+  { k: 'month', l: 'This month' },
+  { k: 'lastMonth', l: 'Last month' },
+  { k: 'custom', l: 'Custom range…' },
+];
+
+/** The calendar day (ISO) an email arrived, on the app clock: `today` at `nowHour`, minus its age. */
+export function receivedDay(e: Email, today: string, nowHour: number): string {
+  return addD(today, Math.floor((nowHour * 60 - e.ago) / 1440));
+}
+
+/** First and last day (ISO, inclusive) a range covers; '' leaves that end open. */
+export function rangeDays(f: Pick<InboxFilters, 'rangeFilter' | 'rangeFrom' | 'rangeTo'>, today: string): [string, string] {
+  const month = today.slice(0, 7);
+  const lastMonth = addD(month + '-01', -1).slice(0, 7);
+  switch (f.rangeFilter) {
+    case 'today': return [today, today];
+    case 'yesterday': return [addD(today, -1), addD(today, -1)];
+    case 'week': return [addD(today, -6), today];
+    case 'days30': return [addD(today, -29), today];
+    case 'month': return [month + '-01', today];
+    case 'lastMonth': return [lastMonth + '-01', addD(month + '-01', -1)];
+    case 'custom': return f.rangeFrom && f.rangeTo && f.rangeFrom > f.rangeTo ? [f.rangeTo, f.rangeFrom] : [f.rangeFrom, f.rangeTo];
+    default: return ['', ''];
+  }
+}
+
 export interface InboxFilters {
   view: InboxView;
   acctFilter: string;
@@ -43,7 +78,13 @@ export interface InboxFilters {
   coFilter: string;
   /** Only conversations with this address, sent or received ('' = everyone). */
   peer: string;
-  rangeFilter: 'all' | 'today' | 'week';
+  rangeFilter: RangeFilter;
+  /** Custom range, ISO days inclusive ('' = open). */
+  rangeFrom: string;
+  rangeTo: string;
+  /** App clock, to place each email on a calendar day. */
+  today: string;
+  nowHour: number;
   ivFilter: 'all' | IvStatus;
   unreadOnly: boolean;
   actionOnly: boolean;
@@ -62,12 +103,29 @@ export function searchText(e: Email, apps: Application[]): string {
   ].join(' ').toLowerCase();
 }
 
-export function sortEmails(list: Email[], key: SortKey): Email[] {
+/** The deadline (ISO day) if it is still ahead of `today`, else '' (none, unreadable, or already passed). */
+export function upcomingDeadline(e: Email, today: string): string {
+  const d = e.deadlineKey || '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= today ? d : '';
+}
+
+/**
+ * Newest, oldest, priority (most urgent first, then still-to-do, then newest), or
+ * approaching deadline: upcoming deadlines soonest first, then everything without
+ * one (including deadlines already passed) newest first.
+ */
+export function sortEmails(list: Email[], key: SortKey, today = ''): Email[] {
+  const todo = (e: Email) => (needsAction(e) ? 0 : 1);
   const by = (a: Email, b: Email): number => {
     switch (key) {
       case 'oldest': return b.ago - a.ago;
-      case 'priority': return PRI_RANK[a.pri] - PRI_RANK[b.pri] || a.ago - b.ago;
-      case 'deadline': return a.deadlineKey.localeCompare(b.deadlineKey) || a.ago - b.ago;
+      case 'priority': return PRI_RANK[a.pri] - PRI_RANK[b.pri] || todo(a) - todo(b) || a.ago - b.ago;
+      case 'deadline': {
+        const da = upcomingDeadline(a, today);
+        const db = upcomingDeadline(b, today);
+        if (da !== db) return !da ? 1 : !db ? -1 : da.localeCompare(db);
+        return todo(a) - todo(b) || a.ago - b.ago;
+      }
       default: return a.ago - b.ago;
     }
   };
@@ -82,14 +140,19 @@ export function filterEmails(all: Email[], f: InboxFilters, apps: Application[])
   if (f.priFilter !== 'all') list = list.filter((e) => e.pri === f.priFilter);
   if (f.coFilter !== 'all') list = list.filter((e) => e.company === f.coFilter);
   if (f.peer) list = list.filter((e) => (e.peers || []).includes(f.peer) || e.fromAddr.toLowerCase() === f.peer);
-  if (f.rangeFilter === 'today') list = list.filter((e) => e.ago <= 1440);
-  if (f.rangeFilter === 'week') list = list.filter((e) => e.ago <= 10080);
+  const [from, to] = rangeDays(f, f.today);
+  if (from || to) {
+    list = list.filter((e) => {
+      const d = receivedDay(e, f.today, f.nowHour);
+      return (!from || d >= from) && (!to || d <= to);
+    });
+  }
   if (f.ivFilter !== 'all') list = list.filter((e) => e.ivStatus === f.ivFilter);
   if (f.unreadOnly) list = list.filter((e) => e.unread);
   if (f.actionOnly) list = list.filter(needsAction);
   if (f.savedKey) list = list.filter((e) => matchSaved(e, f.savedKey));
   if (q) list = list.filter((e) => searchText(e, apps).includes(q));
-  return sortEmails(list, f.sortKey);
+  return sortEmails(list, f.sortKey, f.today);
 }
 
 /** Second and third non-empty lines of the body, trimmed to a preview. */
