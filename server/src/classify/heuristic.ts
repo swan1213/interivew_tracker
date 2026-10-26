@@ -10,7 +10,11 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 4;
+export const RULES_VERSION = 5;
+
+/** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
+const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
+const NEWSLETTER_BODY = /\bview (this|the) (post|email|newsletter|issue) (on the web|online|in (your )?browser)\b|\bread (it )?online\b|\bmanage (your )?(subscription|email preferences)\b/i;
 
 /** Subjects of application receipts ("Thanks for applying to X", "Application received"). */
 const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your interest|submitting)|application (received|submitted|confirmation|complete)|we('ve| have) received your application|your application (to|for|at|with|has been|was))\b/i;
@@ -204,13 +208,18 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   const subjInvite = /\binvit/i.test(p.subject);
   const subjAvail = /\bavailab/i.test(p.subject);
 
-  const offerHit = strongOffer || (looseOffer && !appliedHit && !statusHit);
+  // Mailing-list mail (an unsubscribe footer) never carries a real offer.
+  const bulk = /\bunsubscribe\b/i.test(body);
+  const newsletter = NEWSLETTER_FROM.test(p.fromAddr) || NEWSLETTER_BODY.test(body);
+  const offerHit = !bulk && !newsletter && (strongOffer || (looseOffer && !appliedHit && !statusHit));
 
   let cat: Cat;
   let sec: Cat | '' = '';
   let conf: number;
   let mode: EmailMode | undefined;
-  if (offerHit) { cat = 'offer'; conf = 92; }
+  // A newsletter post about interviews is reading material, not a request.
+  if (newsletter) { cat = 'auto'; conf = 90; }
+  else if (offerHit) { cat = 'offer'; conf = 92; }
   else if (rejectHit && !confirmedHit) { cat = 'rejected'; conf = 88; }
   // An application receipt often carries a copy of the form or résumé ("available from...", "when would you
   // start"), which reads like a scheduling request. Its subject says what it is; an assessment still counts.

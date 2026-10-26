@@ -8,7 +8,7 @@ import { companyLine, effCat, filterEmails, firstLink, isNoReply, needsAction, p
 import { addD, lab } from '@/lib/time';
 import { cx, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { AcDot, CatChip, CoBadge, Empty, Fact, PriBadge } from '@/ui/bits';
+import { AcDot, CatChip, CoBadge, Empty, Fact, Linked, PriBadge } from '@/ui/bits';
 
 export function Inbox() {
   const st = useStore();
@@ -380,7 +380,9 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
           </button>
           {st.insOpen && (
             <div className="insb">
-              <p style={{ margin: '10px 0 0', fontSize: 13.5, lineHeight: 1.55 }}>{e.summary}</p>
+              <p style={{ margin: '10px 0 0', fontSize: 13.5, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+                <Linked text={e.summary} />
+              </p>
               <div className="fgrid" style={{ marginTop: 0 }}>
                 <Fact label="Company">{e.company || 'Not detected'}</Fact>
                 <Fact label="Position">{e.role || 'Not stated'}</Fact>
@@ -411,7 +413,9 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
                     </h4>
                     <ul>
                       {e.facts.map((f) => (
-                        <li key={f}>{f}</li>
+                        <li key={f}>
+                          <Linked text={f} />
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -422,7 +426,9 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
                     </h4>
                     <ul>
                       {assumptions.map((f) => (
-                        <li key={f}>{f}</li>
+                        <li key={f}>
+                          <Linked text={f} />
+                        </li>
                       ))}
                     </ul>
                   </div>
@@ -435,7 +441,9 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
                   </h4>
                   <ul>
                     {e.facts.map((f) => (
-                      <li key={f}>{f}</li>
+                      <li key={f}>
+                          <Linked text={f} />
+                        </li>
                     ))}
                     {e.assumptions.map((f) => (
                       <li key={f}>{f} (inferred)</li>
@@ -515,7 +523,9 @@ function Thread({ e }: { e: Email }) {
                       </button>
                     )}
                   </div>
-                  <div className="tbody">{m.body}</div>
+                  <div className="tbody">
+                    <Linked text={m.body} />
+                  </div>
                   {!!m.atts?.length && (
                     <div className="tatt">
                       {m.atts.map((at) => (

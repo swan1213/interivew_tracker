@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Account, Cat, Pri, Role } from '@/data/types';
 import { CAT, type IconName } from '@/data/constants';
 import { colorOf, cx, initialOf, priV } from '@/lib/util';
+import { linkParts } from '@/lib/links';
 import { roleMeta } from '@/lib/roles';
 import { Icon } from './Icon';
 
@@ -143,3 +144,20 @@ export function Whose({ a, accts = [] }: { a: Account | undefined; accts?: Accou
 
 /** A stripe in the account's color down a row's left edge. */
 export const stripe = (a: Account | undefined): CSSProperties | undefined => (a ? { boxShadow: 'inset 3px 0 0 ' + a.color } : undefined);
+
+/** Message text with its web addresses shown as compact link tags that open in a new tab. */
+export function Linked({ text }: { text: string }) {
+  return (
+    <>
+      {linkParts(text).map((p, i) =>
+        'url' in p ? (
+          <a key={i} className="ulink" href={p.url} target="_blank" rel="noopener noreferrer nofollow" title={p.url}>
+            {p.label}
+          </a>
+        ) : (
+          p.text
+        ),
+      )}
+    </>
+  );
+}

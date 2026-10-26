@@ -200,6 +200,9 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .tmsg .lnk{font-size:12px;font-weight:450}
 .tbody{margin-top:14px;font-size:14px;line-height:1.6;white-space:pre-line;overflow-wrap:anywhere;color:var(--tx)}
 .tatt{margin-top:12px}
+.ulink{display:inline-flex;align-items:center;gap:3px;max-width:100%;padding:0 7px;margin:0 1px;border-radius:6px;background:var(--acs);color:var(--acx);font-size:.88em;font-weight:550;line-height:1.6;text-decoration:none;vertical-align:baseline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ulink::after{content:'\2197';font-size:.85em;opacity:.7}
+.ulink:hover{text-decoration:underline}
 .snip{font-size:13px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .tmore{display:block;width:100%;padding:8px 20px;text-align:left;font-size:12.5px;color:var(--ac);background:var(--sf2);border:0;border-bottom:1px solid var(--bd);cursor:pointer}
 .tact{display:flex;gap:10px;flex-wrap:wrap;padding:16px 20px 18px 72px}

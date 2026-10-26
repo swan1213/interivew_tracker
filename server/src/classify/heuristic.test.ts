@@ -219,3 +219,25 @@ describe('application receipts and no-reply scheduling', () => {
     expect(c.action).toMatch(/^(Book a time using the scheduling link|Follow the scheduling instructions)/);
   });
 });
+
+describe('newsletters and mailing-list mail', () => {
+  const nl = (fromAddr: string, subject: string, bodyText: string): ParsedMessage => ({
+    id: 'n', threadId: 'tn', fromName: 'Samaya', fromAddr, to: 'me@gmail.com', subject, date: '2026-10-06T20:53:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+
+  it('a Substack post about landing a job offer is automated mail, not an offer', () => {
+    const c = classifyHeuristic(
+      nl('uxdesigncourses@substack.com', 'UX Challenge #5: How to answer the "tell me about your UX process" question in a UX job interview.',
+        'View this post on the web at https://uxdesigncourses.substack.com/p/ux-challenge-5\n\nYour POV: you are interviewing for your dream UX job. Vish went through 5 rounds of interviews, finally landing a job offer. Join us on Sat Feb 20 at 3:00 PM ET.'),
+      NOW,
+    );
+    expect(c.cat).toBe('auto');
+    expect(c.needs).toBe(false);
+  });
+
+  it('mail with an unsubscribe footer is never an offer', () => {
+    const c = classifyHeuristic(nl('news@careers.example', 'Career tips', 'How I got my job offer in 30 days.\nUnsubscribe from these emails.'), NOW);
+    expect(c.cat).not.toBe('offer');
+  });
+});
