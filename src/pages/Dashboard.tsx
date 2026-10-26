@@ -24,7 +24,7 @@ export function upcomingInterviews(events: CalEvent[], all: Email[], today: stri
     .filter((v) => v.date >= today && (v.kind === 'interview' ? v.added || !!v.emailId : looksLikeInterview(v.co)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const withEvent = new Set(evs.map((v) => v.emailId).filter(Boolean));
-  const untimed = all.filter((e) => effCat(e) === 'confirmed' && !e.evId && !withEvent.has(e.id) && !e.done);
+  const untimed = all.filter((e) => effCat(e) === 'confirmed' && !e.evId && !e.evRemoved && !withEvent.has(e.id) && !e.done);
   return [...evs.map((ev) => ({ id: ev.id, ev })), ...untimed.map((email) => ({ id: 'mail-' + email.id, email }))];
 }
 

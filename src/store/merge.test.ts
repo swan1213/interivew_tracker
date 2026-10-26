@@ -70,4 +70,15 @@ describe('merging a server snapshot with local workflow state', () => {
     // Hand-made busy blocks (the demo's) are local and stay.
     expect(out.events.some((v) => v.id === 'b1')).toBe(true);
   });
+
+  it('takes interviews deleted in Google Calendar off the calendar', () => {
+    const local = buildDemoData();
+    const ev = local.events.find((v) => v.kind === 'interview' && v.added)!;
+    const localOnly = { ...ev, id: 'ev-local-only' };
+    local.events.push(localOnly);
+    const out = mergeSnapshot(local, { ...server, calRemoved: [ev.id, localOnly.id] });
+    expect(out.events.find((v) => v.id === ev.id)?.added).toBe(false);
+    expect(out.events.some((v) => v.id === localOnly.id)).toBe(false);
+    expect(mergeSnapshot(local, server).events.find((v) => v.id === ev.id)?.added).toBe(true);
+  });
 });

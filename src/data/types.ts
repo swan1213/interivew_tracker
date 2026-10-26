@@ -100,6 +100,8 @@ export interface Email {
   opts?: [string, number][];
   /** Linked calendar event id. */
   evId?: string;
+  /** The calendar invitation this email is about was deleted or declined in Google Calendar. */
+  evRemoved?: boolean;
   canReply: boolean;
   replyKind: string;
   summary: string;
@@ -209,6 +211,8 @@ export interface DataSnapshot {
   events: CalEvent[];
   notifs: Notif[];
   activity: ActivityItem[];
+  /** Interviews the app had put on Google Calendar that were deleted there; the app takes them off too. */
+  calRemoved?: string[];
 }
 
 export interface OutgoingMessage {

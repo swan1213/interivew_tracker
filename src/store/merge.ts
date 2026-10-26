@@ -52,15 +52,18 @@ export function mergeSnapshot(local: Data, server: DataSnapshot): Data {
   });
 
   const lEv = new Map(local.events.map((v) => [v.id, v]));
+  // Interviews deleted in Google Calendar come off the app's calendar too.
+  const removed = new Set(server.calRemoved || []);
   const events: CalEvent[] = server.events.map((s) => {
     const l = lEv.get(s.id);
     // Busy blocks mirror the user's Google Calendar, so the server copy wins.
-    return l && s.kind !== 'busy' ? { ...s, added: l.added, rem: l.rem, date: l.date, start: l.start, end: l.end, co: l.co, pendingNote: l.pendingNote } : s;
+    if (!l || s.kind === 'busy') return s;
+    return { ...s, added: l.added && !removed.has(s.id), rem: l.rem, date: l.date, start: l.start, end: l.end, co: l.co, pendingNote: l.pendingNote };
   });
   const serverEv = new Set(server.events.map((v) => v.id));
   local.events.forEach((v) => {
     const acct = v.acct || v.emailId?.split(':')[0];
-    if (!serverEv.has(v.id) && !isPulledBusy(v) && (!acct || connected.has(acct))) events.push(v);
+    if (!serverEv.has(v.id) && !isPulledBusy(v) && !removed.has(v.id) && (!acct || connected.has(acct))) events.push(v);
   });
 
   const lNotif = new Map(local.notifs.map((n) => [n.id, n]));
