@@ -71,7 +71,7 @@ describe('meetings that count as interviews', () => {
 });
 
 describe('tracker stages from calendar meetings', () => {
-  const app = (co: string, more: Partial<Application> = {}): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [], ...more });
+  const app = (co: string, more: Partial<Application> = {}): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [], ...more });
   const meet = (id: string, co: string, date: string, more: Partial<CalEvent> = {}): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'recruiter@acme.example', ...more });
   const stages = (apps: Application[], evs: CalEvent[]) => Object.fromEntries(meetingStages(apps, evs, [], '2026-10-27').map((a) => [a.co, a.stage]));
 
@@ -94,7 +94,7 @@ describe('tracker stages from calendar meetings', () => {
 });
 
 describe('technical interviews', () => {
-  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
+  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
   const meet = (id: string, co: string, date: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'recruiter@x.example' });
   const stageOf = (evs: CalEvent[]) => meetingStages([app('Fluidstack')], evs, [], '2026-10-27')[0].stage;
 
@@ -109,7 +109,7 @@ describe('technical interviews', () => {
 });
 
 describe('which company a meeting belongs to', () => {
-  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'applied', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
+  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'applied', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
   const meet = (id: string, co: string, organizer?: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date: '2026-10-28', organizer });
   const owner = (apps: string[], v: CalEvent) => meetingStages(apps.map(app), [v], [], '2026-10-27').filter((a) => a.meetings).map((a) => a.co);
 
@@ -123,5 +123,23 @@ describe('which company a meeting belongs to', () => {
     expect(owner(['Devin', 'Luma'], meet('4', 'Luma | Interview - Joshua Shin', 'devin@lumalabs.ai'))).toEqual(['Luma']);
     expect(owner(['Artemis'], meet('5', 'Artemis Interview (Virtual)', 'anthony@artemissecurity.com'))).toEqual(['Artemis']);
     expect(owner(['Alt'], meet('6', 'Joshua Shin and Kate', 'kate@saltlabs.example'))).toEqual([]);
+  });
+});
+
+describe('meetings that are not about this application', () => {
+  const app = (co: string, applied = 'Oct 27'): Application => ({ id: 'app-' + co, co, role: '', stage: 'applied', applied, acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
+  const meet = (id: string, co: string, date: string, organizer?: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer });
+  const stage = (a: Application, evs: CalEvent[]) => meetingStages([a], evs, [], '2026-10-27')[0].stage;
+
+  it("ignores a recruiter's name and meetings from before the company's first email", () => {
+    // "Hanna" was read from a Nordic application; Evan Hanna ran a MillerKnoll screen in June.
+    expect(stage(app('Hanna'), [meet('1', 'Joshua Shin - MillerKnoll Phone Screen', '2026-06-10', 'Evan Hanna')])).toBe('applied');
+    expect(stage(app('Hanna', 'Jun 1'), [meet('1', 'Joshua Shin - MillerKnoll Phone Screen', '2026-06-10', 'Evan Hanna')])).toBe('applied');
+    expect(stage(app('Socket'), [meet('2', 'Interview with Socket', '2026-06-10')])).toBe('applied');
+    expect(stage(app('Socket'), [meet('2', 'Interview with Socket', '2026-10-28')])).toBe('first');
+  });
+
+  it('counts the same interview entered twice on one day once', () => {
+    expect(stage(app('Ingram Content', 'Oct 15'), [meet('1', 'Phone interview - Ingram Content Group', '2026-10-22'), meet('2', 'Phone interview - Ingram Content Group', '2026-10-22')])).toBe('first');
   });
 });

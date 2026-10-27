@@ -1,5 +1,6 @@
 import type { Application, CalEvent, StageKey } from '@/data/types';
-import { fmtT, lab } from './time';
+import { appliedDay } from './mail';
+import { addD, fmtT, lab } from './time';
 
 /** A Google Calendar event whose title says it is an interview. */
 export const looksLikeInterview = (title: string): boolean => /\b(interview|screen(ing)?|recruiter|hiring manager|onsite|on-site|technical|panel|final round)\b/i.test(title);
@@ -47,6 +48,9 @@ const coWords = (co: string): string[] =>
     .split(/[^a-z0-9]+/)
     .filter((w) => w.length >= 3 && !GENERIC.has(w));
 
+/** An organizer that is a company's shared calendar ("StreamNative Interviewer Calendar"), not a person. */
+const ORG_CALENDAR = /\b(calendar|interviews?|interviewer|recruiting|talent|careers|jobs|hiring|scheduling)\b/i;
+
 const wordsOf = (s: string): string => ' ' + s.toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
 
 /**
@@ -58,7 +62,9 @@ export function meetingScore(v: CalEvent, company: string): number {
   const words = coWords(company);
   if (!words.length) return 0;
   const people = [v.organizer || '', ...(v.attendees || [])];
-  const title = wordsOf(v.co + ' ' + people.filter((p) => !p.includes('@')).join(' '));
+  // A person's name is not a company ("Evan Hanna" is a MillerKnoll recruiter); a shared calendar's name is.
+  const calendars = people.filter((p) => !p.includes('@') && ORG_CALENDAR.test(p));
+  const title = wordsOf(v.co + ' ' + calendars.join(' '));
   const domains = people.map((p) => p.split('@')[1] || '').join(' ').toLowerCase();
   const inTitle = words.every((w) => title.includes(' ' + w + ' '));
   // Inside a domain only longer words count: "alt" turns up in too many unrelated domains.
@@ -145,19 +151,22 @@ const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
 
 /**
  * Tracker stages from the calendar: when the company's latest meeting (past or booked) is a technical
- * round it is at Technical Interview; otherwise one meeting is First Interview, two or more Next Step
- * Interview. Each meeting belongs to the one company it matches best. Cards you moved yourself, and
+ * round it is at Technical Interview; otherwise meetings on one day are First Interview, on two or more
+ * days Next Step Interview. Each meeting belongs to the one company it matches best, and only from a few
+ * days before the company's first email. Cards you moved yourself, and
  * offers, hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one,
  * and `meetings` lists the meeting days.
  */
 export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const byApp = new Map<string, CalEvent[]>();
+  // A meeting well before the company's first email is about something else.
+  const since = new Map(apps.map((a) => [a.id, addD(appliedDay(a.applied, today) || '0000-01-01', -3)]));
   for (const v of meetings) {
     let best: Application | undefined;
     let top = 0;
     for (const a of apps) {
-      const s = a.emailId && v.emailId === a.emailId ? 10 : meetingScore(v, a.co);
+      const s = a.emailId && v.emailId === a.emailId ? 10 : v.date < since.get(a.id)! ? 0 : meetingScore(v, a.co);
       if (s > top) [best, top] = [a, s];
     }
     if (best) (byApp.get(best.id) || byApp.set(best.id, []).get(best.id)!).push(v);
@@ -169,6 +178,8 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
     if (a.locked || SETTLED.includes(stage)) return stage === a.stage && !mine.length ? a : { ...a, stage, ...dates };
     if (!mine.length) return stage === 'first' || stage === 'tech' || stage === 'next' ? { ...a, stage: 'review' } : a;
     const up = mine.find((v) => v.date >= today);
-    return { ...a, ...dates, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+    // Rounds are counted by day: two entries on one day are usually the same interview twice.
+    const rounds = new Set(mine.map((v) => v.date)).size;
+    return { ...a, ...dates, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
   });
 }
