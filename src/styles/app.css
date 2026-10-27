@@ -433,3 +433,5 @@ button.ymd:hover{background:var(--sf2)}
 .dmeet.past{opacity:.75}
 .dmail{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:1px solid var(--bd);border-radius:8px;padding:7px 10px;background:none;color:inherit;cursor:pointer;font-size:12.5px}
 .dmail:hover{background:var(--sf2)}
+.trd{display:inline-flex;align-items:center;gap:6px;color:var(--tx3);font-size:12.5px}
+.trd input[type=date]{width:136px;color:var(--tx)}

@@ -18,7 +18,7 @@ function reset(patch: Partial<AppState> = {}) {
     useStore.setState({
       ...d, selId: 'e1', page: 'dash', view: 'inbox', calView: 'week', calDate: '2026-10-26', compOpen: false, aiDraft: '', S: DEFAULT_SETTINGS,
       schedOpen: false, addCalOpen: false, sendOpen: false, cfOpen: false, addAcctOpen: false, notifOpen: false, acMenuOpen: false, appSel: '', calSel: '', toast: '',
-      themePref: 'light', q: '', acctFilter: 'all', trRange: 'today', members: seedMembers('Jordan Lee', true), meId: 'owner', userMenuOpen: false,
+      themePref: 'light', q: '', acctFilter: 'all', trFrom: null, trTo: null, members: seedMembers('Jordan Lee', true), meId: 'owner', userMenuOpen: false,
       ...patch,
     });
   });
@@ -229,7 +229,7 @@ describe('App', () => {
   });
 
   it('tracker detail lists the interviews and emails', () => {
-    reset({ page: 'track', trRange: '', appSel: 'a7' });
+    reset({ page: 'track', trFrom: '', trTo: '', appSel: 'a7' });
     mount();
     const drawer = container.querySelector('[aria-label="Application detail"]')!;
     expect(drawer.textContent).toContain('Interviews on your calendar (1)');
@@ -240,20 +240,21 @@ describe('App', () => {
     expect(useStore.getState().page).toBe('inbox');
   });
 
-  it('tracker opens on today and counts meetings in the period', () => {
+  it('tracker dates start today and end on Sunday, and count meetings in them', () => {
     reset({ page: 'track' });
     mount();
-    expect(useStore.getState().trRange).toBe('today');
-    expect(container.querySelector('[aria-label="Applied in"] .on')?.textContent).toBe('Today');
-    click('[aria-label="Applied in"] button:nth-child(2)'); // Week: Oct 26 – Nov 1
-    // Orbit Systems applied in September, but its panel is on Nov 3: next week, not this one.
+    const start = container.querySelector<HTMLInputElement>('[aria-label="Start date"]')!;
+    const end = container.querySelector<HTMLInputElement>('[aria-label="End date"]')!;
+    expect(start.value).toBe('2026-10-26');
+    expect(end.value).toBe('2026-11-01');
+    // Orbit Systems applied in September, and its panel is on Nov 3: after this week.
     expect(container.textContent).not.toContain('Orbit Systems');
     // Atlassian applied in September and meets on Oct 28.
     expect(container.textContent).toContain('Atlassian');
   });
 
-  it('tracker filters by account, applied date and status', () => {
-    reset({ page: 'track', trRange: '', trStage: 'all' });
+  it('tracker filters by account, dates and status', () => {
+    reset({ page: 'track', trFrom: '', trTo: '', trStage: 'all' });
     mount();
     const cards = () => container.querySelectorAll('.kc').length;
     const total = useStore.getState().apps.length;
@@ -276,22 +277,15 @@ describe('App', () => {
     expect(container.querySelectorAll('.kcol')).toHaveLength(1);
     expect(cards()).toBe(trackedApps(useStore.getState()).filter((a) => a.stage === 'review').length);
     pick('Status', 'all');
-    const range = (n: number) => click('[aria-label="Applied in"] button:nth-child(' + n + ')');
-    range(3); // Month: October
-    const month = cards();
-    expect(useStore.getState().trRange).toBe('month');
-    expect(month).toBeLessThan(total);
-    expect(month).toBeGreaterThan(0);
-    range(1); // Today
-    expect(cards()).toBeLessThan(month);
-    range(4); // Year
-    expect(cards()).toBeGreaterThan(month);
-    range(4); // clicking the active range again clears it
-    expect(useStore.getState().trRange).toBe('');
-    expect(cards()).toBe(total);
-    range(2);
-    click('.trf .btn');
-    expect(cards()).toBe(total);
+    pick('Start date', '2026-10-20');
+    const since20 = cards();
+    expect(since20).toBeLessThan(total);
+    expect(since20).toBeGreaterThan(0);
+    pick('End date', '2026-10-22');
+    expect(cards()).toBeLessThan(since20);
+    click('.trf .btn'); // Clear: back to this week
+    expect(useStore.getState().trFrom).toBeNull();
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Start date"]')!.value).toBe(useStore.getState().today);
   });
 
   it('sidebar counts follow the selected account', () => {
@@ -305,7 +299,7 @@ describe('App', () => {
   });
 
   it('tracker: accepting an AI suggestion moves the card', () => {
-    reset({ page: 'track', trRange: '' });
+    reset({ page: 'track', trFrom: '', trTo: '' });
     mount();
     // The demo's suggestion: Meridian Labs, Applied → Under Review.
     const accept = Array.from(container.querySelectorAll('.kc .ai .btn.pri'))[0] as HTMLButtonElement;

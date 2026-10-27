@@ -4,41 +4,30 @@ import { CAT, STAGES, STG } from '@/data/constants';
 import type { Application, CalEvent, StageKey } from '@/data/types';
 import { INTERVIEW } from '@/lib/calendar';
 import { appliedDay, effCat } from '@/lib/mail';
-import { addD, fmtT, iso, minutesLabel, mondayOf, rel } from '@/lib/time';
+import { addD, fmtT, minutesLabel, mondayOf, rel } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { AcDot, CoBadge, Fact, PriBadge, Seg } from '@/ui/bits';
+import { AcDot, CoBadge, Fact, PriBadge } from '@/ui/bits';
 
-type Range = AppState['trRange'];
-const RANGES: { k: Range; l: string }[] = [
-  { k: 'today', l: 'Today' },
-  { k: 'week', l: 'Week' },
-  { k: 'month', l: 'Month' },
-  { k: 'year', l: 'Year' },
-];
-
-/** First and last day of today, this week (Monday to Sunday), this month or this year; empty for any time. */
-function period(k: Range, today: string): [string, string] {
-  if (k === 'today') return [today, today];
-  if (k === 'week') return [mondayOf(today), addD(mondayOf(today), 6)];
-  if (k === 'month') return [today.slice(0, 8) + '01', addD(iso(new Date(Date.UTC(+today.slice(0, 4), +today.slice(5, 7), 1))), -1)];
-  if (k === 'year') return [today.slice(0, 5) + '01-01', today.slice(0, 5) + '12-31'];
-  return ['', ''];
-}
+/** The date filter until you change it: today to the end of this week (Sunday). */
+const defaultRange = (today: string): [string, string] => [today, addD(mondayOf(today), 6)];
 
 export function Tracker() {
   const st = useStore();
-  const [from, to] = period(st.trRange, st.today);
+  const [defFrom, defTo] = defaultRange(st.today);
+  const from = st.trFrom ?? defFrom;
+  const to = st.trTo ?? defTo;
   const all = trackedApps(st);
-  const within = (d: string | null | undefined) => !!d && d >= from && d <= to;
-  // In the period: applied then, or a meeting with the company falls in it.
+  const within = (d: string | null | undefined) => !!d && (!from || d >= from) && (!to || d <= to);
+  // In the dates: applied then, or a meeting with the company falls in them.
   const apps = all.filter((a) => {
     if (st.acctFilter !== 'all' && a.acct !== st.acctFilter) return false;
-    return !from || within(appliedDay(a.applied, st.today)) || (a.meetings || []).some(within);
+    return (!from && !to) || within(appliedDay(a.applied, st.today)) || (a.meetings || []).some(within);
   });
   const stages = st.trStage === 'all' ? STAGES : STAGES.filter((s) => s.k === st.trStage);
   const shown = st.trStage === 'all' ? apps.length : apps.filter((a) => a.stage === st.trStage).length;
-  const filtered = st.acctFilter !== 'all' || !!st.trRange || st.trStage !== 'all';
+  const filtered = st.acctFilter !== 'all' || !!from || !!to || st.trStage !== 'all';
+  const changed = st.acctFilter !== 'all' || st.trFrom !== null || st.trTo !== null || st.trStage !== 'all';
   const nAi = apps.filter((x) => x.ai && !x.locked).length;
   const app = all.find((x) => x.id === st.appSel);
 
@@ -53,7 +42,11 @@ export function Tracker() {
             </p>
           </div>
           <div className="ln wrap trf">
-            <Seg value={st.trRange} options={RANGES} onChange={(k) => st.patch({ trRange: st.trRange === k ? '' : k })} ariaLabel="Applied in" />
+            <span className="trd">
+              <input type="date" className="sel" value={from} max={to || undefined} onChange={(e) => st.patch({ trFrom: e.target.value })} aria-label="Start date" title="Start date" />
+              –
+              <input type="date" className="sel" value={to} min={from || undefined} onChange={(e) => st.patch({ trTo: e.target.value })} aria-label="End date" title="End date" />
+            </span>
             <select className="sel" value={st.acctFilter} onChange={(e) => st.patch({ acctFilter: e.target.value })} aria-label="Account">
               <option value="all">All accounts</option>
               {st.accts.map((a) => (
@@ -70,8 +63,8 @@ export function Tracker() {
                 </option>
               ))}
             </select>
-            {filtered && (
-              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trRange: '', trStage: 'all' })}>
+            {changed && (
+              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trFrom: null, trTo: null, trStage: 'all' })} title="Back to today through the end of this week, all accounts and statuses">
                 Clear
               </button>
             )}

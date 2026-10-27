@@ -91,8 +91,9 @@ export interface StateFields extends Data {
   // tracker
   appSel: string;
   overCol: string;
-  /** Tracker filters: applied or meeting today, this week, month or year ('' = any time), and status ('all' = every column). */
-  trRange: '' | 'today' | 'week' | 'month' | 'year';
+  /** Tracker filters: applied or meeting between these ISO days (null = today to the end of this week, '' = open end), and status ('all' = every column). */
+  trFrom: string | null;
+  trTo: string | null;
   trStage: StageKey | 'all';
   // analytics
   anRange: string;
@@ -249,7 +250,7 @@ function initialFields(): StateFields {
     schedOpen: false, schedMode: 'avail', schedSel: [], addCalOpen: false, addCalEv: '', cfOpen: false, cf: NO_CF, addAcctOpen: false,
     toast: '', notifOpen: false, acMenuOpen: false, syncing: false,
     calView: route.calView ?? 'week', calDate: clock.today, calSel: '',
-    appSel: '', overCol: '', trRange: 'today', trStage: 'all', anRange: '30', anAcct: 'all',
+    appSel: '', overCol: '', trFrom: null, trTo: null, trStage: 'all', anRange: '30', anAcct: 'all',
     themePref: prefs.themePref ?? 'light', sysDark: false, collapsed: prefs.collapsed ?? false,
     loading: !provider.isDemo && !saved,
     S,
