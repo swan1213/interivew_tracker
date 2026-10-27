@@ -405,3 +405,4 @@ body{margin:0;background:#F6F6F8}
 .ev[draggable="true"]{cursor:grab}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 .btn.pri[disabled]:hover{filter:none}
+.trf .sel{height:30px;padding:0 8px;font-size:12.5px}

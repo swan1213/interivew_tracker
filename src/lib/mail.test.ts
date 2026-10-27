@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
 import type { Email } from '@/data/types';
 import type { InboxFilters } from './mail';
-import { effCat, filterEmails, inView, matchSaved, participants, previewOf, rangeDays, receivedDay, senderName, sortEmails, type RangeFilter } from './mail';
+import { appliedDay, effCat, filterEmails, inView, matchSaved, participants, previewOf, rangeDays, receivedDay, senderName, sortEmails, type RangeFilter } from './mail';
 
 const base: InboxFilters = {
   view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', today: '2026-10-26', nowHour: 9.2, ivFilter: 'all',
@@ -10,6 +10,14 @@ const base: InboxFilters = {
 };
 const data = buildDemoData();
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+
+describe('applied day', () => {
+  it('reads "Oct 8" as this year, or last year when that is still ahead', () => {
+    expect(appliedDay('Oct 8', '2026-10-27')).toBe('2026-10-08');
+    expect(appliedDay('Dec 30', '2026-10-27')).toBe('2025-12-30');
+    expect(appliedDay('', '2026-10-27')).toBe('');
+  });
+});
 
 describe('inbox filtering', () => {
   it('shows everything in the unified view, newest first', () => {

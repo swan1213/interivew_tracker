@@ -1,5 +1,4 @@
 import type { Application, CalEvent, DataSnapshot, Email, Notif } from '@/data/types';
-import { stageLabel } from '@/data/constants';
 import type { Data } from './store';
 
 /** A busy block pulled from Google Calendar; one the server no longer sends was deleted or moved there. */
@@ -29,26 +28,30 @@ export function mergeSnapshot(local: Data, server: DataSnapshot): Data {
 
   const lApp = new Map(local.apps.map((a) => [a.id, a]));
   const serverIds = new Set(server.apps.map((a) => a.id));
+  // The server re-derives every application from the current mail; the browser keeps only what
+  // the user did to a card. A card the user never moved follows the server's stage, so a stage
+  // from an earlier (since corrected) classification never lingers.
   const apps: Application[] = server.apps.map((s) => {
     const l = lApp.get(s.id);
     if (!l) return s;
-    const suggest = !l.locked && s.stage !== l.stage;
     return {
-      ...l,
-      role: l.role || s.role,
-      activity: s.activity,
-      action: s.action,
+      ...s,
+      role: s.role || l.role,
       emailId: s.emailId || l.emailId,
       next: s.next || l.next,
-      pri: s.pri,
-      ai: suggest ? { stage: s.stage, text: 'moving to ' + stageLabel(s.stage) + ' based on the latest email.' } : l.locked ? null : l.ai,
+      stage: l.locked ? l.stage : s.stage,
+      locked: l.locked,
+      notes: l.notes,
+      remind: l.remind,
+      ai: null,
     };
   });
-  // Keep local-only applications (e.g. a company whose mail was archived), but not ones
-  // from a mailbox that is no longer connected: they would inflate every count.
+  // An application the server no longer derives (its mail was archived or reclassified) stays
+  // only if the user worked on it, and only while its mailbox is connected.
   const connected = new Set(server.accts.map((a) => a.id));
+  const touched = (a: Application) => a.locked || !!a.notes || !!a.remind;
   local.apps.forEach((a) => {
-    if (!serverIds.has(a.id) && connected.has(a.acct)) apps.push(a);
+    if (!serverIds.has(a.id) && connected.has(a.acct) && touched(a)) apps.push(a);
   });
 
   const lEv = new Map(local.events.map((v) => [v.id, v]));

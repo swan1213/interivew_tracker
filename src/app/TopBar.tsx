@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useStore } from '@/store/store';
-import { isDarkTheme } from '@/store/selectors';
+import { getAcct, isDarkTheme } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT } from '@/data/constants';
 import { cx } from '@/lib/util';
@@ -44,8 +44,8 @@ export function TopBar() {
           aria-label="Search all connected accounts"
         />
       </label>
-      <span className="tag" title="Search runs across every connected account">
-        All accounts
+      <span className="tag" title={st.acctFilter === 'all' ? 'Search runs across every connected account' : 'Search runs in this account; pick All accounts in the sidebar to search every one'}>
+        {st.acctFilter === 'all' ? 'All accounts' : getAcct(st.accts, st.acctFilter).label}
       </span>
         </>
       )}

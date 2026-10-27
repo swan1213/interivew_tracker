@@ -19,7 +19,7 @@ describe('merging a server snapshot with local workflow state', () => {
     expect(out.emails.some((e) => e.id === 'e-removed')).toBe(false);
   });
 
-  it('local kanban moves survive and a differing server stage becomes a suggestion', () => {
+  it('local kanban moves survive; a card the user never moved follows the server stage', () => {
     const local = buildDemoData();
     local.apps = local.apps.map((a) => (a.id === 'a1' ? { ...a, stage: 'tech' as const, locked: true, notes: 'prep notes' } : a.id === 'a2' ? { ...a, stage: 'review' as const, locked: false } : a));
     const out = mergeSnapshot(local, server);
@@ -29,8 +29,8 @@ describe('merging a server snapshot with local workflow state', () => {
     expect(a1.notes).toBe('prep notes');
     expect(a1.ai).toBeNull();
     const a2 = out.apps.find((a) => a.id === 'a2')!;
-    expect(a2.stage).toBe('review');
-    expect(a2.ai).toEqual({ stage: 'confirmed', text: 'moving to Interview Confirmed based on the latest email.' });
+    expect(a2.stage).toBe('confirmed');
+    expect(a2.ai).toBeNull();
   });
 
   it('events added locally stay added and moved times are kept', () => {
@@ -52,11 +52,13 @@ describe('merging a server snapshot with local workflow state', () => {
 
   it('drops applications and events left over from a mailbox that is no longer connected', () => {
     const local = buildDemoData();
-    local.apps = [...local.apps, { ...local.apps[0], id: 'app-gone', co: 'Gone Co', acct: 'g-test' }, { ...local.apps[0], id: 'app-archived', co: 'Archived Co' }];
+    local.apps = [...local.apps, { ...local.apps[0], id: 'app-gone', co: 'Gone Co', acct: 'g-test', locked: true }, { ...local.apps[0], id: 'app-archived', co: 'Archived Co', notes: 'call back' }, { ...local.apps[0], id: 'app-stale', co: 'Stale Co' }];
     local.events = [...local.events, { ...local.events[0], id: 'ev-g-test:t1', emailId: 'g-test:t1' }];
     const out = mergeSnapshot(local, server);
     expect(out.apps.some((a) => a.id === 'app-gone')).toBe(false);
     expect(out.apps.some((a) => a.id === 'app-archived')).toBe(true);
+    // Untouched leftovers from an older classification go.
+    expect(out.apps.some((a) => a.id === 'app-stale')).toBe(false);
     expect(out.events.some((v) => v.id === 'ev-g-test:t1')).toBe(false);
   });
 

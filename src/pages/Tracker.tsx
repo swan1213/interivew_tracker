@@ -2,13 +2,24 @@ import { drag, useStore } from '@/store/store';
 import { getAcct } from '@/store/selectors';
 import { STAGES } from '@/data/constants';
 import type { Application, StageKey } from '@/data/types';
+import { appliedDay, RANGE_OPTIONS, rangeDays, type RangeFilter } from '@/lib/mail';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, CoBadge, Fact, PriBadge } from '@/ui/bits';
 
 export function Tracker() {
   const st = useStore();
-  const nAi = st.apps.filter((x) => x.ai && !x.locked).length;
+  const [from, to] = rangeDays({ rangeFilter: st.trRange, rangeFrom: '', rangeTo: '' }, st.today);
+  const apps = st.apps.filter((a) => {
+    if (st.acctFilter !== 'all' && a.acct !== st.acctFilter) return false;
+    if (!from && !to) return true;
+    const d = appliedDay(a.applied, st.today);
+    return !!d && (!from || d >= from) && (!to || d <= to);
+  });
+  const stages = st.trStage === 'all' ? STAGES : STAGES.filter((s) => s.k === st.trStage);
+  const shown = st.trStage === 'all' ? apps.length : apps.filter((a) => a.stage === st.trStage).length;
+  const filtered = st.acctFilter !== 'all' || st.trRange !== 'all' || st.trStage !== 'all';
+  const nAi = apps.filter((x) => x.ai && !x.locked).length;
   const app = st.apps.find((x) => x.id === st.appSel);
 
   return (
@@ -18,18 +29,46 @@ export function Tracker() {
           <div>
             <h1>Application tracker</h1>
             <p>
-              {st.apps.length} applications tracked across {st.accts.length} account{st.accts.length === 1 ? '' : 's'} · drag cards between columns; your manual moves are never overwritten by AI suggestions.
+              {filtered ? shown + ' of ' + st.apps.length + ' applications' : st.apps.length + ' applications tracked across ' + st.accts.length + ' account' + (st.accts.length === 1 ? '' : 's')} · drag cards between columns; your manual moves are never overwritten by AI suggestions.
             </p>
           </div>
-          <div className="ln wrap">
-            <span className="tag">{nAi} AI suggestion{nAi === 1 ? '' : 's'}</span>
+          <div className="ln wrap trf">
+            <select className="sel" value={st.trRange} onChange={(e) => st.patch({ trRange: e.target.value as RangeFilter })} aria-label="Applied date">
+              {RANGE_OPTIONS.filter((o) => o.k !== 'custom').map((o) => (
+                <option key={o.k} value={o.k}>
+                  {o.k === 'all' ? 'Applied: any date' : 'Applied: ' + o.l.toLowerCase()}
+                </option>
+              ))}
+            </select>
+            <select className="sel" value={st.acctFilter} onChange={(e) => st.patch({ acctFilter: e.target.value })} aria-label="Account">
+              <option value="all">All accounts</option>
+              {st.accts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+            <select className="sel" value={st.trStage} onChange={(e) => st.patch({ trStage: e.target.value as StageKey | 'all' })} aria-label="Status">
+              <option value="all">All statuses</option>
+              {STAGES.map((s) => (
+                <option key={s.k} value={s.k}>
+                  {s.l}
+                </option>
+              ))}
+            </select>
+            {filtered && (
+              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trRange: 'all', trStage: 'all' })}>
+                Clear
+              </button>
+            )}
+            {nAi > 0 && <span className="tag">{nAi} AI suggestion{nAi === 1 ? '' : 's'}</span>}
           </div>
         </div>
       </div>
 
       <div className="kan">
-        {STAGES.map((s) => {
-          const cards = st.apps.filter((a) => a.stage === s.k);
+        {stages.map((s) => {
+          const cards = apps.filter((a) => a.stage === s.k);
           return (
             <section
               key={s.k}

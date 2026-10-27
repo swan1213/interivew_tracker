@@ -38,7 +38,9 @@ export function Sidebar() {
   const st = useStore();
   const all = visibleAll(st.emails, st.accts);
   const unreadAll = unreadCount(all);
-  const actionN = actionCount(all);
+  // View counts follow the account picked in the switcher, like the lists they open.
+  const mine = st.acctFilter === 'all' ? all : all.filter((e) => e.acct === st.acctFilter);
+  const actionN = actionCount(mine);
   const pg = st.page;
   const role = currentRole(st);
   const guest = role === 'guest';
@@ -47,20 +49,20 @@ export function Sidebar() {
 
   const navMain: NavItem[] = [
     nav('Dashboard', 'dash', 0, false, pg === 'dash', () => st.go('dash')),
-    nav('Unified Inbox', 'inbox', unreadAll, false, inb('inbox'), view('inbox')),
+    nav('Unified Inbox', 'inbox', unreadCount(mine), false, inb('inbox'), view('inbox')),
   ];
   const navViews: NavItem[] = [
     nav('Action Required', 'bolt', actionN, true, inb('action'), view('action')),
-    nav('Interview Invitations', 'video', viewUnread(all, 'invite'), false, inb('invite'), view('invite')),
-    nav('Availability Requests', 'clock', viewUnread(all, 'avail'), false, inb('avail'), view('avail')),
+    nav('Interview Invitations', 'video', viewUnread(mine, 'invite'), false, inb('invite'), view('invite')),
+    nav('Availability Requests', 'clock', viewUnread(mine, 'avail'), false, inb('avail'), view('avail')),
     nav('Upcoming Interviews', 'checkc', 0, false, pg === 'cal' && st.calView === 'agenda', () => st.go('cal', { calView: 'agenda', calDate: st.today })),
-    nav('Application Updates', 'info', viewUnread(all, 'status'), false, inb('status'), view('status')),
-    nav('Application Confirmations', 'file', viewUnread(all, 'applied'), false, inb('applied'), view('applied')),
-    nav('Offers', 'award', viewUnread(all, 'offers'), true, inb('offers'), view('offers')),
+    nav('Application Updates', 'info', viewUnread(mine, 'status'), false, inb('status'), view('status')),
+    nav('Application Confirmations', 'file', viewUnread(mine, 'applied'), false, inb('applied'), view('applied')),
+    nav('Offers', 'award', viewUnread(mine, 'offers'), true, inb('offers'), view('offers')),
     nav('Rejections', 'xc', 0, false, inb('rejected'), view('rejected')),
-    nav('Automated / No-Reply', 'bot', viewUnread(all, 'auto'), false, inb('auto'), view('auto')),
+    nav('Automated / No-Reply', 'bot', viewUnread(mine, 'auto'), false, inb('auto'), view('auto')),
     nav('Sent', 'send', 0, false, inb('sent'), view('sent')),
-    nav('Other mail', 'mail', viewUnread(all, 'other'), false, inb('other'), view('other')),
+    nav('Other mail', 'mail', viewUnread(mine, 'other'), false, inb('other'), view('other')),
   ];
   const navTools: NavItem[] = [
     nav('Calendar', 'cal', 0, false, pg === 'cal' && st.calView !== 'agenda', () => st.go('cal', { calView: st.calView === 'agenda' ? 'week' : st.calView }), 'cal'),
@@ -120,7 +122,7 @@ export function Sidebar() {
                 role="option"
                 aria-selected={st.acctFilter === a.id}
                 className={cx('acitem', st.acctFilter === a.id && 'on')}
-                onClick={() => st.patch({ acctFilter: a.id, acMenuOpen: false, page: 'inbox', view: 'inbox' })}
+                onClick={() => st.patch({ acctFilter: a.id, acMenuOpen: false, ...(st.page === 'track' ? {} : { page: 'inbox' as const, view: 'inbox' as const }) })}
               >
                 <AcDot color={a.color} initial={a.initial} />
                 <span className="acmeta">

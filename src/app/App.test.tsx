@@ -170,6 +170,44 @@ describe('App', () => {
     expect(useStore.getState().calSel).toBe('');
   });
 
+  it('tracker filters by account, applied date and status', () => {
+    reset({ page: 'track', trRange: 'all', trStage: 'all' });
+    mount();
+    const cards = () => container.querySelectorAll('.kc').length;
+    const total = useStore.getState().apps.length;
+    expect(cards()).toBe(total);
+    const pick = (label: string, value: string) => {
+      const sel = container.querySelector<HTMLSelectElement>('select[aria-label="' + label + '"]')!;
+      act(() => {
+        sel.value = value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    };
+    pick('Account', 'w1');
+    const inW1 = useStore.getState().apps.filter((a) => a.acct === 'w1').length;
+    expect(cards()).toBe(inW1);
+    expect(container.textContent).toContain(inW1 + ' of ' + total + ' applications');
+    pick('Account', 'all');
+    pick('Status', 'review');
+    expect(container.querySelectorAll('.kcol')).toHaveLength(1);
+    expect(cards()).toBe(useStore.getState().apps.filter((a) => a.stage === 'review').length);
+    pick('Status', 'all');
+    pick('Applied date', 'week');
+    expect(cards()).toBeLessThan(total);
+    click('.trf .btn');
+    expect(cards()).toBe(total);
+  });
+
+  it('sidebar counts follow the selected account', () => {
+    reset({ page: 'inbox' });
+    mount();
+    const actionCnt = () => container.querySelector('[title="Action Required"] .cnt')?.textContent;
+    const all = actionCnt();
+    act(() => useStore.getState().patch({ acctFilter: 'w1' }));
+    expect(actionCnt()).not.toBe(all);
+    expect(Number(actionCnt() || 0)).toBe(useStore.getState().emails.filter((e) => e.acct === 'w1' && !e.archived && e.needs && !e.done).length);
+  });
+
   it('tracker: accepting an AI suggestion moves the card', () => {
     reset({ page: 'track' });
     mount();

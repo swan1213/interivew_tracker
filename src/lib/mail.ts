@@ -1,5 +1,5 @@
 import type { Application, Cat, Email, InboxView, IvStatus, Pri, SortKey } from '@/data/types';
-import { CAT, PRI_RANK, stageLabel } from '@/data/constants';
+import { CAT, MN, PRI_RANK, stageLabel } from '@/data/constants';
 import { addD } from './time';
 
 /** Effective category: the user's override wins over the AI classification. */
@@ -52,6 +52,16 @@ export const RANGE_OPTIONS: { k: RangeFilter; l: string }[] = [
 /** The calendar day (ISO) an email arrived, on the app clock: `today` at `nowHour`, minus its age. */
 export function receivedDay(e: Email, today: string, nowHour: number): string {
   return addD(today, Math.floor((nowHour * 60 - e.ago) / 1440));
+}
+
+/** An application's "Oct 8" applied date as an ISO day: this year, or last year if that would be after `today`. */
+export function appliedDay(applied: string, today: string): string {
+  const m = /^([A-Z][a-z]{2})\s+(\d{1,2})$/.exec(applied.trim());
+  const mi = m ? MN.indexOf(m[1]) : -1;
+  if (!m || mi < 0) return '';
+  const y = Number(today.slice(0, 4));
+  const day = (yr: number) => yr + '-' + String(mi + 1).padStart(2, '0') + '-' + m[2].padStart(2, '0');
+  return day(y) > today ? day(y - 1) : day(y);
 }
 
 /** First and last day (ISO, inclusive) a range covers; '' leaves that end open. */
