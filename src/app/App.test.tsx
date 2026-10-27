@@ -240,7 +240,7 @@ describe('App', () => {
     expect(useStore.getState().page).toBe('inbox');
   });
 
-  it('tracker dates start today and end on Sunday, and count meetings in them', () => {
+  it('tracker dates cover this week, Monday to Sunday, and count meetings in them', () => {
     reset({ page: 'track' });
     mount();
     const start = container.querySelector<HTMLInputElement>('[aria-label="Start date"]')!;
@@ -285,7 +285,7 @@ describe('App', () => {
     expect(cards()).toBeLessThan(since20);
     click('.trf .btn'); // Clear: back to this week
     expect(useStore.getState().trFrom).toBeNull();
-    expect(container.querySelector<HTMLInputElement>('[aria-label="Start date"]')!.value).toBe(useStore.getState().today);
+    expect(container.querySelector<HTMLInputElement>('[aria-label="Start date"]')!.value).toBe('2026-10-26');
   });
 
   it('sidebar counts follow the selected account', () => {

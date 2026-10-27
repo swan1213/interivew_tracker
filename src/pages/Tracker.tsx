@@ -9,8 +9,8 @@ import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, CoBadge, Fact, PriBadge } from '@/ui/bits';
 
-/** The date filter until you change it: today to the end of this week (Sunday). */
-const defaultRange = (today: string): [string, string] => [today, addD(mondayOf(today), 6)];
+/** The date filter until you change it: this week, Monday to Sunday. */
+const defaultRange = (today: string): [string, string] => [mondayOf(today), addD(mondayOf(today), 6)];
 
 export function Tracker() {
   const st = useStore();
@@ -64,7 +64,7 @@ export function Tracker() {
               ))}
             </select>
             {changed && (
-              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trFrom: null, trTo: null, trStage: 'all' })} title="Back to today through the end of this week, all accounts and statuses">
+              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trFrom: null, trTo: null, trStage: 'all' })} title="Back to this week (Monday to Sunday), all accounts and statuses">
                 Clear
               </button>
             )}

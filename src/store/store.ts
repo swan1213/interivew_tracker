@@ -91,7 +91,7 @@ export interface StateFields extends Data {
   // tracker
   appSel: string;
   overCol: string;
-  /** Tracker filters: applied or meeting between these ISO days (null = today to the end of this week, '' = open end), and status ('all' = every column). */
+  /** Tracker filters: applied or meeting between these ISO days (null = this week, Monday to Sunday, '' = open end), and status ('all' = every column). */
   trFrom: string | null;
   trTo: string | null;
   trStage: StageKey | 'all';
