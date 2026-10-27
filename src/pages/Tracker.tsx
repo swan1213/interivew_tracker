@@ -2,14 +2,14 @@ import { drag, useStore } from '@/store/store';
 import { getAcct } from '@/store/selectors';
 import { STAGES } from '@/data/constants';
 import type { Application, StageKey } from '@/data/types';
-import { appliedDay, RANGE_OPTIONS, rangeDays, type RangeFilter } from '@/lib/mail';
+import { appliedDay, rangeDays } from '@/lib/mail';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, CoBadge, Fact, PriBadge } from '@/ui/bits';
 
 export function Tracker() {
   const st = useStore();
-  const [from, to] = rangeDays({ rangeFilter: st.trRange, rangeFrom: '', rangeTo: '' }, st.today);
+  const [from, to] = rangeDays({ rangeFilter: 'custom', rangeFrom: st.trFrom, rangeTo: st.trTo }, st.today);
   const apps = st.apps.filter((a) => {
     if (st.acctFilter !== 'all' && a.acct !== st.acctFilter) return false;
     if (!from && !to) return true;
@@ -18,7 +18,7 @@ export function Tracker() {
   });
   const stages = st.trStage === 'all' ? STAGES : STAGES.filter((s) => s.k === st.trStage);
   const shown = st.trStage === 'all' ? apps.length : apps.filter((a) => a.stage === st.trStage).length;
-  const filtered = st.acctFilter !== 'all' || st.trRange !== 'all' || st.trStage !== 'all';
+  const filtered = st.acctFilter !== 'all' || !!st.trFrom || !!st.trTo || st.trStage !== 'all';
   const nAi = apps.filter((x) => x.ai && !x.locked).length;
   const app = st.apps.find((x) => x.id === st.appSel);
 
@@ -33,13 +33,12 @@ export function Tracker() {
             </p>
           </div>
           <div className="ln wrap trf">
-            <select className="sel" value={st.trRange} onChange={(e) => st.patch({ trRange: e.target.value as RangeFilter })} aria-label="Applied date">
-              {RANGE_OPTIONS.filter((o) => o.k !== 'custom').map((o) => (
-                <option key={o.k} value={o.k}>
-                  {o.k === 'all' ? 'Applied: any date' : 'Applied: ' + o.l.toLowerCase()}
-                </option>
-              ))}
-            </select>
+            <span className="trd">
+              Applied
+              <input type="date" className="sel" value={st.trFrom} max={st.trTo || undefined} onChange={(e) => st.patch({ trFrom: e.target.value })} aria-label="Applied from" />
+              –
+              <input type="date" className="sel" value={st.trTo} min={st.trFrom || undefined} onChange={(e) => st.patch({ trTo: e.target.value })} aria-label="Applied to" />
+            </span>
             <select className="sel" value={st.acctFilter} onChange={(e) => st.patch({ acctFilter: e.target.value })} aria-label="Account">
               <option value="all">All accounts</option>
               {st.accts.map((a) => (
@@ -57,7 +56,7 @@ export function Tracker() {
               ))}
             </select>
             {filtered && (
-              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trRange: 'all', trStage: 'all' })}>
+              <button type="button" className="btn sm" onClick={() => st.patch({ acctFilter: 'all', trFrom: '', trTo: '', trStage: 'all' })}>
                 Clear
               </button>
             )}

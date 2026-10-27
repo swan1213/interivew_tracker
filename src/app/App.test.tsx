@@ -171,15 +171,17 @@ describe('App', () => {
   });
 
   it('tracker filters by account, applied date and status', () => {
-    reset({ page: 'track', trRange: 'all', trStage: 'all' });
+    reset({ page: 'track', trFrom: '', trTo: '', trStage: 'all' });
     mount();
     const cards = () => container.querySelectorAll('.kc').length;
     const total = useStore.getState().apps.length;
     expect(cards()).toBe(total);
     const pick = (label: string, value: string) => {
-      const sel = container.querySelector<HTMLSelectElement>('select[aria-label="' + label + '"]')!;
+      const sel = container.querySelector<HTMLInputElement | HTMLSelectElement>('[aria-label="' + label + '"]')!;
       act(() => {
-        sel.value = value;
+        // React tracks the value itself: set it through the native setter, then fire input + change.
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(sel), 'value')!.set!.call(sel, value);
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
         sel.dispatchEvent(new Event('change', { bubbles: true }));
       });
     };
@@ -192,8 +194,12 @@ describe('App', () => {
     expect(container.querySelectorAll('.kcol')).toHaveLength(1);
     expect(cards()).toBe(useStore.getState().apps.filter((a) => a.stage === 'review').length);
     pick('Status', 'all');
-    pick('Applied date', 'week');
-    expect(cards()).toBeLessThan(total);
+    pick('Applied from', '2026-10-20');
+    const since20 = cards();
+    expect(since20).toBeLessThan(total);
+    expect(since20).toBeGreaterThan(0);
+    pick('Applied to', '2026-10-22');
+    expect(cards()).toBeLessThan(since20);
     click('.trf .btn');
     expect(cards()).toBe(total);
   });
