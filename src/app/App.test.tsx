@@ -193,6 +193,22 @@ describe('App', () => {
     expect(useStore.getState().calSel).toBe('');
   });
 
+  it('calendar shows one account at a time and keeps past meetings', () => {
+    const d = buildDemoData();
+    const mine = d.emails.find((e) => e.id === 'e7')!.acct;
+    const other = d.accts.find((a) => a.id !== mine)!.id;
+    reset({ page: 'cal', calView: 'week', acctFilter: mine });
+    mount();
+    expect(container.querySelector('select[aria-label="Calendar account"]')).not.toBeNull();
+    expect(container.querySelector('.ev.st-mgr')).not.toBeNull();
+    reset({ page: 'cal', calView: 'week', acctFilter: other });
+    mount();
+    expect(container.querySelector('.ev.st-mgr')).toBeNull();
+    reset({ page: 'cal', calView: 'week', calDate: '2026-10-19' });
+    mount();
+    expect(container.querySelectorAll('.ev.past').length).toBeGreaterThan(0);
+  });
+
   it('tracker filters by account, applied date and status', () => {
     reset({ page: 'track', trFrom: '', trTo: '', trStage: 'all' });
     mount();

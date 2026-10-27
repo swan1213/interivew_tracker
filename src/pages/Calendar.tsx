@@ -12,18 +12,19 @@ import { AcDot, Empty, Fact, Seg } from '@/ui/bits';
 /** The calendar service behind a mailbox. */
 const calName = (a: Account | undefined): string => (a?.provider === 'Outlook' ? 'Outlook Calendar' : 'Google Calendar');
 
-/** Calendars shown in the header, one per mailbox in its color; the demo shows its fictional ones. */
+/** Header notes: calendars that need the mailbox connected again; the demo shows its fictional ones. */
 function calendarSources(accts: Account[]): { label: string; color: string; title: string }[] {
   if (provider.isDemo) return ['Google Calendar synced', 'Microsoft Calendar synced'].map((label) => ({ label, color: 'var(--ok)', title: label }));
-  return accts.map((a) =>
-    a.calendar
-      ? { label: a.addr, color: a.color, title: calName(a) + ' synced for ' + a.addr }
-      : { label: a.addr + ' · reconnect for calendar', color: 'var(--warn)', title: 'Connect ' + a.addr + ' again and allow ' + calName(a) + ' access' },
-  );
+  return accts
+    .filter((a) => !a.calendar)
+    .map((a) => ({ label: a.addr + ' · reconnect for calendar', color: 'var(--warn)', title: 'Connect ' + a.addr + ' again and allow ' + calName(a) + ' access' }));
 }
 
 /** The mailbox an event belongs to. */
 const acctOf = (accts: Account[], v: CalEvent): Account | undefined => (v.acct ? accts.find((a) => a.id === v.acct) : undefined);
+
+/** Mailbox id of an event: its calendar, or for an interview made from mail, that email's mailbox. */
+const eventAcct = (v: CalEvent, emails: { id: string; acct: string }[]): string | undefined => v.acct || (v.emailId ? emails.find((e) => e.id === v.emailId)?.acct : undefined);
 
 /** A stripe in the mailbox color down the event's left edge, plus the selection ring. */
 function accent(a: Account | undefined, selected = false): CSSProperties | undefined {
@@ -77,6 +78,8 @@ export function CalendarPage() {
   const ws = hrs(S.whStart);
   const we = hrs(S.whEnd);
   const active = activeEvents(st.events);
+  // The account picker narrows what is drawn; conflicts still count every calendar, since it is one person's time.
+  const shown = st.acctFilter === 'all' ? active : active.filter((v) => eventAcct(v, st.emails) === st.acctFilter);
   const days = view === 'day' ? [cd] : range(7).map((i) => addD(mondayOf(cd), i));
   const m0 = dObj(cd);
 
@@ -132,6 +135,19 @@ export function CalendarPage() {
             ))}
           </select>
         </label>
+        {st.accts.length > 1 && (
+          <label className="ln mini">
+            Calendar
+            <select className="sel" value={st.acctFilter} onChange={(e) => st.patch({ acctFilter: e.target.value, calSel: '' })} aria-label="Calendar account">
+              <option value="all">All accounts</option>
+              {st.accts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.addr}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {calendarSources(st.accts).map((c) => (
           <span key={c.label} className="tag" title={c.title}>
             <span className="cdot" style={{ background: c.color }} />
@@ -142,9 +158,9 @@ export function CalendarPage() {
 
       <div className="calbody">
         <div className="calmain">
-          {(view === 'week' || view === 'day') && <WeekGrid days={days} active={active} />}
-          {view === 'month' && <MonthGrid active={active} />}
-          {view === 'agenda' && <Agenda active={active} />}
+          {(view === 'week' || view === 'day') && <WeekGrid days={days} active={active} shown={shown} />}
+          {view === 'month' && <MonthGrid shown={shown} />}
+          {view === 'agenda' && <Agenda active={active} shown={shown} />}
         </div>
 
         <aside className="calside" aria-label="Event details">
@@ -202,7 +218,7 @@ export function CalendarPage() {
   );
 }
 
-function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
+function WeekGrid({ days, active, shown }: { days: string[]; active: CalEvent[]; shown: CalEvent[] }) {
   const st = useStore();
   const off = tzOffset(st.S.tz);
   const ws = hrs(st.S.whStart);
@@ -231,7 +247,7 @@ function WeekGrid({ days, active }: { days: string[]; active: CalEvent[] }) {
       </div>
       {days.map((dt) => {
         const dow = dObj(dt).getUTCDay();
-        const evs = active.filter((v) => v.date === dt);
+        const evs = shown.filter((v) => v.date === dt);
         // Events are drawn at least 22px tall, so lay them out by that height too.
         const lanes = layoutLanes(evs, 22 / HOUR_PX);
         return (
@@ -285,7 +301,7 @@ function EventBlock({ v, active, lane }: { v: CalEvent; active: CalEvent[]; lane
   return (
     <button
       type="button"
-      className={cx('ev', STG[v.stage].cls, !isIv && 'busy', sel && 'sel3', c && 'cf')}
+      className={cx('ev', STG[v.stage].cls, !isIv && 'busy', sel && 'sel3', c && 'cf', v.date < st.today && 'past')}
       style={{ top: (v.start - GRID_START_HOUR) * HOUR_PX, height: h, ...place, ...accent(acctOf(st.accts, v), sel) }}
       title={v.co + (v.role ? ' · ' + v.role : '') + '\n' + when + (v.platform ? '\n' + v.platform : '') + (c ? '\nConflicts with ' + c.co : '')}
       onClick={() => st.patch({ calSel: v.id })}
@@ -306,7 +322,7 @@ function EventBlock({ v, active, lane }: { v: CalEvent; active: CalEvent[]; lane
   );
 }
 
-function MonthGrid({ active }: { active: CalEvent[] }) {
+function MonthGrid({ shown }: { shown: CalEvent[] }) {
   const st = useStore();
   const off = tzOffset(st.S.tz);
   const m0 = dObj(st.calDate);
@@ -323,12 +339,12 @@ function MonthGrid({ active }: { active: CalEvent[] }) {
       {range(42).map((i) => {
         const dt = addD(gridStart, i);
         const o = dObj(dt);
-        const es = active.filter((v) => v.date === dt).sort((a, b) => a.start - b.start);
+        const es = shown.filter((v) => v.date === dt).sort((a, b) => a.start - b.start);
         return (
           <button key={dt} type="button" className={cx('mc', o.getUTCMonth() !== month && 'dim')} onClick={() => st.patch({ calDate: dt, calView: 'day' })} aria-label={lab(dt) + (es.length ? ', ' + es.length + ' events' : '')}>
             <span className={cx('dnum', dt === st.today && 'today')}>{o.getUTCDate()}</span>
             {es.slice(0, 3).map((v) => (
-              <span key={v.id} className={cx('mev', STG[v.stage].cls)} style={accent(acctOf(st.accts, v))}>
+              <span key={v.id} className={cx('mev', STG[v.stage].cls, v.date < st.today && 'past')} style={accent(acctOf(st.accts, v))}>
                 {fmtT(v.start + off).replace(':00', '')} {v.co}
               </span>
             ))}
@@ -340,12 +356,12 @@ function MonthGrid({ active }: { active: CalEvent[] }) {
   );
 }
 
-function Agenda({ active }: { active: CalEvent[] }) {
+function Agenda({ active, shown }: { active: CalEvent[]; shown: CalEvent[] }) {
   const st = useStore();
   const off = tzOffset(st.S.tz);
   const days = range(14)
     .map((i) => addD(st.calDate, i))
-    .map((dt) => ({ dt, es: active.filter((v) => v.date === dt).sort((a, b) => a.start - b.start) }))
+    .map((dt) => ({ dt, es: shown.filter((v) => v.date === dt).sort((a, b) => a.start - b.start) }))
     .filter((d) => d.es.length);
   return (
     <div className="ag">

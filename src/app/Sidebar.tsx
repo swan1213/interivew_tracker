@@ -122,7 +122,7 @@ export function Sidebar() {
                 role="option"
                 aria-selected={st.acctFilter === a.id}
                 className={cx('acitem', st.acctFilter === a.id && 'on')}
-                onClick={() => st.patch({ acctFilter: a.id, acMenuOpen: false, ...(st.page === 'track' ? {} : { page: 'inbox' as const, view: 'inbox' as const }) })}
+                onClick={() => st.patch({ acctFilter: a.id, acMenuOpen: false, ...(st.page === 'track' || st.page === 'cal' ? {} :{ page: 'inbox' as const, view: 'inbox' as const }) })}
               >
                 <AcDot color={a.color} initial={a.initial} />
                 <span className="acmeta">

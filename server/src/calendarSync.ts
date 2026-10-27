@@ -16,9 +16,11 @@ import type { StoredAccount } from './types';
 const FILE = 'calendar.json';
 /** App times are Eastern; Google converts for the viewer. */
 const ET = 'America/New_York';
-/** Window pulled on each sync. */
-const PAST_DAYS = 1;
+/** Window pulled on each sync: past meetings stay visible on the calendar. */
+const HISTORY_DAYS = 180;
 const AHEAD_DAYS = 60;
+/** App interviews older than this are over and no longer checked against Google. */
+const PAST_DAYS = 1;
 
 export interface CalendarStore {
   /** App interviews on a calendar; `date` (ISO day, ET) lets past ones be forgotten instead of re-checked forever. */
@@ -158,7 +160,7 @@ export function toBusy(acct: StoredAccount, g: GEvent): CalEvent | null {
 /** Pull the account's calendar into busy blocks. */
 export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calendarFor(acct), now: Date = new Date()): Promise<{ busy: number; deleted: number }> {
   const day = 86_400_000;
-  const items = await api.listEvents(new Date(now.getTime() - PAST_DAYS * day).toISOString(), new Date(now.getTime() + AHEAD_DAYS * day).toISOString());
+  const items = await api.listEvents(new Date(now.getTime() - HISTORY_DAYS * day).toISOString(), new Date(now.getTime() + AHEAD_DAYS * day).toISOString());
   const busy = items.map((g) => toBusy(acct, g)).filter((v): v is CalEvent => !!v);
 
   // Interviews the app put on this calendar but missing from the listing: outside the
@@ -170,16 +172,20 @@ export async function syncCalendar(acct: StoredAccount, api: CalendarApi = calen
   const past = new Set(mine.filter(([, l]) => l.date && l.date < addDays(today, -PAST_DAYS)).map(([id]) => id));
   const deleted: string[] = [];
   const dated: Record<string, string> = {};
+  // Linked before dates were kept: learn the date, and forget the link if the interview is over.
+  const learn = (evId: string, g: GEvent) => {
+    if (!g.start?.dateTime) return;
+    const d = etParts(g.start.dateTime).date;
+    if (d < addDays(today, -PAST_DAYS)) past.add(evId);
+    else dated[evId] = d;
+  };
+  const listed = new Map(items.map((g) => [g.id, g]));
+  for (const [evId, l] of mine) if (!l.date && !past.has(evId) && listed.has(l.gid)) learn(evId, listed.get(l.gid)!);
   for (const [evId, l] of mine.filter(([id, l]) => !past.has(id) && !present.has(l.gid)).slice(0, VERIFY_MAX)) {
     try {
       const g = await api.get(l.gid);
       if (g.status === 'cancelled') deleted.push(evId);
-      else if (!l.date && g.start?.dateTime) {
-        // Linked before dates were kept: learn the date, and forget the link if the interview is over.
-        const d = etParts(g.start.dateTime).date;
-        if (d < addDays(today, -PAST_DAYS)) past.add(evId);
-        else dated[evId] = d;
-      }
+      else if (!l.date) learn(evId, g);
     } catch (e) {
       if (gone(e)) deleted.push(evId);
     }
