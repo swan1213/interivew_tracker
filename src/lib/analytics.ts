@@ -4,9 +4,9 @@ import { addD, dObj } from './time';
 import { effCat, needsAction } from './mail';
 
 /** One email reduced to what Analytics counts. `d` is its age in days. */
-export interface Rec { acct: string; cat: Cat; d: number; needs: boolean; company: string }
+export interface Rec { id: string; acct: string; cat: Cat; d: number; needs: boolean; company: string }
 
-export const toRec = (e: Email): Rec => ({ acct: e.acct, cat: effCat(e), d: e.ago / 1440, needs: needsAction(e), company: e.company });
+export const toRec = (e: Email): Rec => ({ id: e.id, acct: e.acct, cat: effCat(e), d: e.ago / 1440, needs: needsAction(e), company: e.company });
 
 /** Mail that is part of the job search: not automated, uncertain, unrelated or your own sent mail. */
 export const isRecruitment = (c: Cat): boolean => !['auto', 'review', 'other', 'sent'].includes(c);

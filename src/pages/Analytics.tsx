@@ -3,8 +3,7 @@ import { getAcct } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { STAGES } from '@/data/constants';
 import type { CalEvent } from '@/data/types';
-import { effCat } from '@/lib/mail';
-import { looksLikeInterview } from '@/lib/calendar';
+import { isInterviewMeeting, meetingMentions } from '@/lib/calendar';
 import { BUCKETS, byCompany, funnel, isRecruitment, pct, toRec, weekly, type Rec } from '@/lib/analytics';
 import { daysBetween } from '@/lib/time';
 import { cx } from '@/lib/util';
@@ -24,14 +23,11 @@ export function Analytics() {
     if (em) return em.acct;
     return st.apps.find((a) => a.co === v.co)?.acct || '';
   };
-  // Interviews on the calendar in the range (before or after today) not already counted as a "confirmed" email:
-  // ones you added, and Google Calendar events titled like an interview.
-  const evRows = st.events
-    .filter((v) => v.added && Math.abs(daysBetween(st.today, v.date)) <= days && (v.kind === 'interview' || looksLikeInterview(v.co)))
-    .filter((v) => {
-      const em = v.emailId ? st.emails.find((e) => e.id === v.emailId) : undefined;
-      return !(em && effCat(em) === 'confirmed');
-    });
+  // Interview meetings on the calendar in the range, before or after today: ones you added, and
+  // calendar meetings with someone else. A "confirmed" email adds one only when no meeting covers it.
+  const own = st.accts.map((a) => a.addr);
+  const evRows = st.events.filter((v) => v.added && Math.abs(daysBetween(st.today, v.date)) <= days && isInterviewMeeting(v, own));
+  const covered = (r: Rec) => evRows.some((v) => v.emailId === r.id || meetingMentions(v, r.company));
 
   const accRows = connected.map((a) => {
     const rs = inRange.filter((r) => r.acct === a.id);
@@ -46,7 +42,7 @@ export function Analytics() {
       app: c((r) => r.cat === 'applied' || r.cat === 'status'),
       rej: c((r) => r.cat === 'rejected'),
       off: c((r) => r.cat === 'offer'),
-      sched: conf + evRows.filter((v) => evAcct(v) === a.id).length,
+      sched: evRows.filter((v) => evAcct(v) === a.id).length + c((r) => r.cat === 'confirmed' && !covered(r)),
       recruiting: c((r) => isRecruitment(r.cat)),
     };
   });
@@ -222,7 +218,7 @@ export function Analytics() {
               />
             ))}
             <div className="mut" style={{ marginTop: 8 }}>
-              Counts confirmed-interview emails plus interviews on your calendar not already covered by one.
+              Counts meetings on your calendar with recruiters and interviewers (before and after today), plus confirmed-interview emails that have no meeting on the calendar yet.
             </div>
           </div>
         </section>

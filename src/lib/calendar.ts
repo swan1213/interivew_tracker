@@ -14,6 +14,37 @@ export function busyAt(active: CalEvent[], date: string, s: number, e: number, e
 /** An interview: one made in the app, or a synced calendar event whose title says it is one. */
 export const isInterview = (v: CalEvent): boolean => v.kind === 'interview' || looksLikeInterview(v.co);
 
+/** Meetings with other people that are not part of a hiring process. */
+const NOT_INTERVIEW = /\b(info session|webinar|test call|office hours|workshop|class|lesson|birthday|holiday|dentist|doctor)\b/i;
+
+/**
+ * A meeting that counts toward interviews scheduled: an interview by kind or title, or, on a
+ * job-search calendar, any meeting with someone else (recruiter calls are often titled
+ * "Joshua Shin and Jane Doe"). `own` lists the user's addresses, so being a guest yourself doesn't count.
+ */
+export function isInterviewMeeting(v: CalEvent, own: string[] = []): boolean {
+  if (isInterview(v)) return true;
+  if (NOT_INTERVIEW.test(v.co)) return false;
+  const mine = new Set(own.map((a) => a.toLowerCase()));
+  return !!v.organizer || (v.attendees || []).some((g) => !mine.has(g.toLowerCase()));
+}
+
+/** Words of a company name long enough to find in a meeting title ("Acme" in "Interview with Acme, Inc."). */
+const coWords = (co: string): string[] =>
+  co
+    .toLowerCase()
+    .replace(/[,.]?\s+(inc|llc|ltd|corp|co|gmbh)\.?$/i, '')
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3);
+
+/** The calendar meeting text mentions the company (title, organizer or guest addresses). */
+export function meetingMentions(v: CalEvent, company: string): boolean {
+  const words = coWords(company);
+  if (!words.length) return false;
+  const text = [v.co, v.organizer || '', ...(v.attendees || [])].join(' ').toLowerCase();
+  return words.every((w) => text.includes(w));
+}
+
 /** Every other active event that overlaps `v` where at least one side is an interview, earliest first. */
 export function conflictsOf(v: CalEvent, active: CalEvent[]): CalEvent[] {
   if (!v.added) return [];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CalEvent } from '@/data/types';
-import { conflictPairs, conflictsOf, layoutLanes } from './calendar';
+import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions } from './calendar';
 
 const ev = (id: string, start: number, end: number): CalEvent => ({ id, kind: 'interview', co: id, role: '', stage: 'screen', date: '2026-10-27', start, end, added: true });
 const lanes = (m: Map<string, { lane: number; lanes: number }>) => Object.fromEntries([...m].map(([id, l]) => [id, l.lane + '/' + l.lanes]));
@@ -42,5 +42,29 @@ describe('interview conflicts', () => {
     const iv = ev('iv', 10, 12);
     const out = conflictsOf(iv, [iv, busy('d', 'Dentist', 11, 12), busy('s', 'Recruiter screen', 10, 10.5)]);
     expect(out.map((x) => x.id)).toEqual(['s', 'd']);
+  });
+});
+
+describe('meetings that count as interviews', () => {
+  const busy = (co: string, more: Partial<CalEvent> = {}): CalEvent => ({ ...ev('b', 10, 11), kind: 'busy', stage: 'busy', co, ...more });
+  const own = ['me@gmail.com'];
+
+  it('counts recruiter calls with someone else, whatever the title', () => {
+    expect(isInterviewMeeting(busy('Joshua Shin and Ryan Demmer', { organizer: 'rdemmer@collectors.com' }), own)).toBe(true);
+    expect(isInterviewMeeting(busy('Virtual Call with OpenAI', { attendees: ['me@gmail.com', 'yoshi@openai.com'] }), own)).toBe(true);
+    expect(isInterviewMeeting(busy('Interview with NICE'), own)).toBe(true);
+  });
+
+  it('skips events alone, events where only you are a guest, and info sessions', () => {
+    expect(isInterviewMeeting(busy('OPtio'), own)).toBe(false);
+    expect(isInterviewMeeting(busy('Gym', { attendees: ['ME@gmail.com'] }), own)).toBe(false);
+    expect(isInterviewMeeting(busy('EF Language Abroad Info Session', { organizer: 'zoom.ils - ef.com' }), own)).toBe(false);
+  });
+
+  it('matches a company to a meeting by title, organizer or guests', () => {
+    expect(meetingMentions(busy('Interview with Rebuy, Inc.'), 'Rebuy Inc.')).toBe(true);
+    expect(meetingMentions(busy('Quick chat', { organizer: 'santiago@getclera.com' }), 'Clera')).toBe(true);
+    expect(meetingMentions(busy('Interview with Socket'), 'Docker')).toBe(false);
+    expect(meetingMentions(busy('Anything'), 'AI')).toBe(false);
   });
 });

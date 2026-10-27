@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Cat } from '@/data/types';
 import { BUCKETS, byCompany, funnel, pct, weekly, type Rec } from './analytics';
 
-const r = (company: string, cat: Cat, d = 1): Rec => ({ acct: 'g1', cat, d, needs: false, company });
+const r = (company: string, cat: Cat, d = 1): Rec => ({ id: company + cat + d, acct: 'g1', cat, d, needs: false, company });
 
 describe('analytics', () => {
   it('puts every category in exactly one status-mix bucket', () => {
