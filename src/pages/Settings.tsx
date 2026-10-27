@@ -26,8 +26,7 @@ const REM_ROWS: { m: string; title: string }[] = [
 const AI_ROWS: { k: AiKey; title: string; desc: string }[] = [
   { k: 'auto', title: 'Classify new mail automatically', desc: 'Meaning-based, not keyword matching' },
   { k: 'surfaceAuto', title: 'Surface actionable no-reply mail', desc: 'A no-reply sender with a deadline still counts as actionable' },
-  { k: 'showConf', title: 'Show confidence scores', desc: 'In the AI Insights panel' },
-  { k: 'flagAssume', title: 'Mark AI assumptions separately', desc: 'Stated facts and inferences never mix' },
+  { k: 'showConf', title: 'Show confidence scores', desc: 'In the AI summary of each email' },
 ];
 const THEME_TABS: { k: ThemePref; l: string }[] = [
   { k: 'light', l: 'Light' },

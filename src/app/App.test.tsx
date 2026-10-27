@@ -83,14 +83,17 @@ describe('App', () => {
     click('.pr');
     const s = useStore.getState();
     expect(s.page).toBe('inbox');
-    expect(container.querySelector('.dhead h2')?.textContent).toBeTruthy();
+    expect(container.querySelector('.dsubj h2')?.textContent).toBeTruthy();
     expect(s.emails.find((e) => e.id === s.selId)?.unread).toBe(false);
   });
 
   it('inbox detail shows insights, next action and reply assistant; generating a draft shows it', () => {
     reset({ page: 'inbox', selId: 'e1' });
     let html = mount();
-    expect(html).toContain('AI Insights');
+    expect(html).toContain('AI summary');
+    expect(html).not.toContain('AI assumptions');
+    expect(html).not.toContain('Related application');
+    expect(html).not.toContain('Needs reply today');
     expect(html).toContain('96% confidence');
     expect(html).toContain('Schedule interview');
     expect(html).toContain('AI reply assistant');
