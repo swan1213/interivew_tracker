@@ -12,7 +12,7 @@ import { genText, type ReplyOpts } from '@/lib/reply';
 import { forwardBlock, inView, isNoReply, replyRecipients, replySubject, type RangeFilter } from '@/lib/mail';
 import { activeEvents, conflictOf } from '@/lib/calendar';
 import { fmtT, lab, rel, tzOffset } from '@/lib/time';
-import { maxPick, parseSlotKey, type SchedMode } from '@/lib/schedule';
+import { parseSlotKey, type SchedMode } from '@/lib/schedule';
 import { loadJSON, removeKey, saveJSON } from '@/lib/storage';
 import {
   canManageRoles, canSee, currentRole, homePage, newMemberError, removeMemberError, restoreMeId, restoreMembers, roleChangeError, roleMeta, upsertMember,
@@ -483,15 +483,12 @@ export const useStore = create<AppState>()((set, get) => {
     closeSched: () => set({ schedOpen: false }),
     toggleSlot: (key) => {
       const s = get();
-      const e = emailOf(s, s.selId);
       if (s.schedMode === 'resched') {
         set({ schedSel: [key] });
         return;
       }
-      const max = maxPick(s.schedMode, e?.need || 1);
-      if (s.schedSel.includes(key)) set({ schedSel: s.schedSel.filter((k) => k !== key) });
-      else if (s.schedSel.length >= max) showToast('You can offer up to ' + max + ' times. Deselect one first.');
-      else set({ schedSel: s.schedSel.concat([key]) });
+      // Offer as many times as you like; the email's count is only the minimum.
+      set({ schedSel: s.schedSel.includes(key) ? s.schedSel.filter((k) => k !== key) : s.schedSel.concat([key]) });
     },
     genSchedReply: () => {
       const s = get();

@@ -91,6 +91,7 @@ export function useEscapeKey(): void {
       else if (s.addAcctOpen) s.patch({ addAcctOpen: false });
       else if (s.notifOpen || s.acMenuOpen || s.userMenuOpen) s.patch({ notifOpen: false, acMenuOpen: false, userMenuOpen: false });
       else if (s.appSel) s.patch({ appSel: '' });
+      else if (s.calSel && s.page === 'cal') s.patch({ calSel: '' });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

@@ -59,9 +59,11 @@ describe('store actions', () => {
     st().toggleSlot('2026-10-28|11');
     expect(st().schedSel).toHaveLength(2);
     st().toggleSlot('2026-10-29|11');
-    st().toggleSlot('2026-10-30|11'); // more than the 3 asked for is fine, up to 5
+    st().toggleSlot('2026-10-30|11'); // more than the 3 asked for is fine, with no upper limit
     st().toggleSlot('2026-10-30|13');
-    st().toggleSlot('2026-10-30|15'); // a sixth: ignored with a toast
+    st().toggleSlot('2026-10-30|15');
+    expect(st().schedSel).toHaveLength(6);
+    st().toggleSlot('2026-10-30|15'); // clicking again deselects
     expect(st().schedSel).toHaveLength(5);
     st().genSchedReply();
     expect(st().schedOpen).toBe(false);

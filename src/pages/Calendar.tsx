@@ -409,13 +409,17 @@ function EventPanel({ v, active }: { v: CalEvent; active: CalEvent[] }) {
   return (
     <>
       <div>
-        <div className="ln wrap" style={{ marginBottom: 6 }}>
+        <div className="evtop">
           <span className={cx('chip', STG[v.stage].cls)}>{STG[v.stage].label}</span>
           {c && (
             <span className="chip" style={{ ['--c' as string]: 'var(--bad)', ['--cb' as string]: 'var(--badb)' }}>
               Scheduling conflict
             </span>
           )}
+          <span className="sp" />
+          <button type="button" className="ib" onClick={() => st.patch({ calSel: '' })} aria-label="Close event details" title="Close (Esc)">
+            <Icon name="x" sm />
+          </button>
         </div>
         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 650 }}>{v.co}</h2>
         <div className="mini">{v.role + (v.pendingNote ? ' · ' + v.pendingNote : '')}</div>

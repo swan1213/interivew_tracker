@@ -229,18 +229,10 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
           {e.ivStatus === 'awaiting' && <span className="tag">Awaiting confirmation</span>}
         </div>
 
-        {need && e.action && (
+        {need && (acts.length > 0 || e.deadline) && (
           <div className="act">
             <Icon name="bolt" />
-            <span className="sp">
-              <b>Next action:</b> {e.action}
-              {e.deadline && (
-                <>
-                  {' · '}
-                  <b>Due {e.deadline}</b>
-                </>
-              )}
-            </span>
+            <span className="sp">{e.deadline && <b>Due {e.deadline}</b>}</span>
             {acts.map((a) => (
               <button key={a.label} type="button" className={cx('btn sm', a.primary && 'pri')} onClick={a.run}>
                 {a.label}

@@ -17,7 +17,6 @@ describe('scheduling dialog model', () => {
     // 9:00 .. 17:00 start times fit a 45-minute call before 18:00
     expect(m.days[0].slots.map((s) => s.label)).toEqual(['9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', '3:00 PM', '4:00 PM', '5:00 PM']);
     expect(m.cantGen).toBe(true);
-    expect(m.count).toBe('0 of 3 selected');
   });
 
   it('crosses out slots that overlap existing events', () => {
@@ -37,17 +36,14 @@ describe('scheduling dialog model', () => {
     const m = buildSched(email('e1'), 'avail', sel, DEFAULT_SETTINGS, active);
     expect(m.days[0].slots[0].on).toBe(true);
     expect(m.cantGen).toBe(false);
-    expect(m.count).toBe('3 of 3 selected');
   });
 
-  it('lets you offer more times than the email asked for, up to five', () => {
-    const sel = [9, 10, 11, 12, 13].map((h) => slotKey('2026-10-27', h));
+  it('lets you offer as many times as you like, at least as many as the email asked for', () => {
+    const sel = [9, 10, 11, 12, 13, 14, 15, 16].map((h) => slotKey('2026-10-27', h));
     const m = buildSched(email('e1'), 'avail', sel, DEFAULT_SETTINGS, active);
-    expect(m.max).toBe(5);
     expect(m.cantGen).toBe(false);
-    expect(m.count).toBe('5 selected (3 requested, up to 5)');
-    expect(m.sub).toContain('Choose 3 to 5 times to offer (3 requested).');
-    expect(buildSched(email('e1'), 'resched', [], DEFAULT_SETTINGS, active).max).toBe(1);
+    expect(m.days[0].slots.filter((s) => s.on)).toHaveLength(8);
+    expect(m.sub).toContain('Choose at least 3 times to offer (3 requested).');
   });
 
   it('skips days outside the configured availability', () => {

@@ -177,7 +177,7 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .insh b{font-weight:650}
 .ins p{margin:0;font-size:13.5px;line-height:1.55;overflow-wrap:anywhere}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px 16px;margin-top:10px}
-.fgrid div span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);font-weight:600}
+.fgrid>div>span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--tx3);font-weight:600}
 .fgrid div b{font-weight:550;font-size:12.5px}
 .conf{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--tx2)}
 .conf .bar{width:90px;flex:none}
@@ -262,6 +262,9 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .seg button.on{background:var(--acs);color:var(--acx)}
 .calbody{flex:1;min-height:0;display:flex}
 .calmain{flex:1;min-width:0;overflow:auto;padding:0}
+.evtop{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px -6px 6px 0}
+.evtop .ib{width:28px;height:28px;border-radius:99px}
+a.btn{text-decoration:none}
 .calside{width:300px;flex:none;border-left:1px solid var(--bd);background:var(--sf);overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
 .wk{display:flex;min-width:620px}
 .wkh{width:48px;flex:none}

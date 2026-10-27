@@ -76,9 +76,7 @@ function ScheduleModal() {
         </div>
       </div>
       <div className="mft">
-        <span className="mut" style={{ flex: 1 }}>
-          {m.count}
-        </span>
+        <span className="sp" />
         <button type="button" className="btn" onClick={st.closeSched}>
           Cancel
         </button>

@@ -114,7 +114,8 @@ describe('App', () => {
     act(() => slots[0].click());
     act(() => slots[1].click());
     act(() => slots[2].click());
-    expect(container.innerHTML).toContain('3 of 3 selected');
+    expect(container.innerHTML).not.toContain('selected');
+    expect(container.querySelectorAll('.slot.on')).toHaveLength(3);
     click('.mft .btn.pri');
     expect(useStore.getState().schedOpen).toBe(false);
     expect(container.querySelector('.comp textarea')).toBeTruthy();
@@ -139,6 +140,13 @@ describe('App', () => {
     click('.ev.st-mgr');
     expect(useStore.getState().calSel).toBe('v3');
     expect(container.innerHTML).toContain('Hiring manager interview');
+    click('[aria-label="Close event details"]');
+    expect(useStore.getState().calSel).toBe('');
+    click('.ev.st-mgr');
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+    expect(useStore.getState().calSel).toBe('');
   });
 
   it('tracker: accepting an AI suggestion moves the card', () => {
