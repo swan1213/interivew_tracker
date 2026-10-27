@@ -104,6 +104,27 @@ describe('App', () => {
     expect(html).toContain('Insert into composer');
   });
 
+  it('a long inbox is shown 50 conversations a page, with newer / older navigation', () => {
+    const base = buildDemoData().emails[0];
+    const many = Array.from({ length: 120 }, (_, i) => ({ ...base, id: 'm' + i, subject: 'Message ' + i, unread: false }));
+    reset({ page: 'inbox', selId: 'm0', emails: many });
+    mount();
+    const range = () => container.querySelector('.lcount')?.textContent;
+    expect(range()).toBe('1–50 of 120');
+    expect(container.querySelectorAll('.er')).toHaveLength(50);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Newer"]')!.disabled).toBe(true);
+    click('[aria-label="Older"]');
+    expect(range()).toBe('51–100 of 120');
+    click('[aria-label="Older"]');
+    expect(range()).toBe('101–120 of 120');
+    expect(container.querySelectorAll('.er')).toHaveLength(20);
+    expect(container.querySelector<HTMLButtonElement>('[aria-label="Older"]')!.disabled).toBe(true);
+    // Another view starts again at the first page.
+    act(() => useStore.getState().openView('action'));
+    act(() => useStore.getState().openView('inbox'));
+    expect(range()).toBe('1–50 of 120');
+  });
+
   it('scheduling flow: pick slots, generate, confirm send', () => {
     reset({ page: 'inbox', selId: 'e1' });
     mount();

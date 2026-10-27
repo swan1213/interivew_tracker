@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStore, type AppState } from '@/store/store';
 import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
@@ -24,11 +24,30 @@ export function Inbox() {
 
 /* ------------------------------------------------------------------ list */
 
+/** Conversations per page, like Gmail. */
+const PAGE_SIZE = 50;
+const num = (n: number) => n.toLocaleString('en-US');
+
 function MessageList({ rows }: { rows: Email[] }) {
   const st = useStore();
   const title = st.peer ? 'All mail with ' + st.peer : st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
   // Filters set from elsewhere (a dashboard tile, say) have no picker here, so say they are on and offer to clear them.
   const narrowed = [st.unreadOnly && 'Unread', st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.rangeFilter !== 'all' && 'Date range', st.savedKey && 'Saved view'].filter(Boolean);
+
+  // Paging starts over whenever the list itself changes (another view, account, search or filter).
+  const listKey = [st.view, st.acctFilter, st.peer, st.q, narrowed.join()].join('|');
+  const [pg, setPg] = useState({ key: listKey, n: 0 });
+  if (pg.key !== listKey) setPg({ key: listKey, n: 0 });
+  const listRef = useRef<HTMLDivElement>(null);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const page = pg.key === listKey ? Math.min(pg.n, pages - 1) : 0;
+  const first = page * PAGE_SIZE;
+  const shown = rows.slice(first, first + PAGE_SIZE);
+  const goPage = (n: number) => {
+    setPg({ key: listKey, n });
+    if (listRef.current) listRef.current.scrollTop = 0;
+  };
+  const range = rows.length ? num(first + 1) + '–' + num(first + shown.length) + ' of ' + num(rows.length) : 'No conversations';
 
   return (
     <section className="lcol" aria-label="Message list">
@@ -36,7 +55,15 @@ function MessageList({ rows }: { rows: Email[] }) {
         <h1>
           <span className="ttl">{title}</span>
           <span className="sp" />
-          <span className="lcount">{rows.length.toLocaleString('en-US')} conversations</span>
+          <span className="lcount" aria-live="polite">
+            {range}
+          </span>
+          <button type="button" className="ib" onClick={() => goPage(page - 1)} disabled={page === 0} aria-label="Newer" title="Newer">
+            <Icon name="chevL" sm />
+          </button>
+          <button type="button" className="ib" onClick={() => goPage(page + 1)} disabled={page >= pages - 1} aria-label="Older" title="Older">
+            <Icon name="chevR" sm />
+          </button>
           {st.peer && (
             <button type="button" className="ib" onClick={() => st.showPeer('')} aria-label="Show everyone's mail" title="Show everyone's mail">
               <Icon name="x" sm />
@@ -56,16 +83,31 @@ function MessageList({ rows }: { rows: Email[] }) {
         )}
       </div>
 
-      <div className="elist">
+      <div className="elist" ref={listRef}>
         {(st.syncing || st.loading) && (
           <>
             <div className="skel" />
             <div className="skel" />
           </>
         )}
-        {rows.map((e) => (
+        {shown.map((e) => (
           <EmailRow key={e.id} e={e} selected={e.id === st.selId} />
         ))}
+        {pages > 1 && (
+          <div className="lfoot">
+            <button type="button" className="btn sm ghost" onClick={() => goPage(page - 1)} disabled={page === 0}>
+              <Icon name="chevL" sm />
+              Newer
+            </button>
+            <span className="mut">
+              Page {num(page + 1)} of {num(pages)}
+            </span>
+            <button type="button" className="btn sm ghost" onClick={() => goPage(page + 1)} disabled={page >= pages - 1}>
+              Older
+              <Icon name="chevR" sm />
+            </button>
+          </div>
+        )}
         {rows.length === 0 && !st.loading && (
           <Empty
             icon="inbox"

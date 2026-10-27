@@ -135,6 +135,8 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .lhead h1 .ttl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lcount{font-size:12px;font-weight:450;color:var(--tx3);margin-right:4px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .lhead .ib{width:30px;height:30px;border-radius:99px}
+.lhead .ib:disabled{opacity:.35;cursor:default;background:none}
+.lfoot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px 14px}
 .narrow{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--acx);background:var(--acs);padding:6px 10px;border-radius:8px}
 .narrow span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .narrow .lnk{font-size:12px}
