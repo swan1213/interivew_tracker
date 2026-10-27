@@ -169,9 +169,10 @@ export class OutlookMail implements GmailApi {
       .map((m) => toGmailMessage(m, f));
   }
 
-  async getMessage(id: string, format: 'full' | 'minimal' = 'full'): Promise<GmailMessage> {
+  async getMessage(id: string, format: 'full' | 'minimal' | 'html' = 'full'): Promise<GmailMessage> {
     const f = await this.folders();
-    const m = await this.get<GraphMessage>('/me/messages/' + encodeURIComponent(id) + '?$select=' + (format === 'full' ? FULL_FIELDS : STATE_FIELDS), {}, TEXT);
+    // Graph sends the HTML body unless asked for text.
+    const m = await this.get<GraphMessage>('/me/messages/' + encodeURIComponent(id) + '?$select=' + (format === 'minimal' ? STATE_FIELDS : FULL_FIELDS), {}, format === 'html' ? {} : TEXT);
     return toGmailMessage(m, f);
   }
 

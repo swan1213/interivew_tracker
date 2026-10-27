@@ -36,6 +36,8 @@ export interface MailProvider {
   connectAccount(kind: 'Gmail' | 'Outlook', existing: Account[], sendAs: string): Promise<Account | null>;
   disconnectAccount(id: string): Promise<void>;
   markRead?(id: string): Promise<void>;
+  /** The original HTML of one message in a conversation ('' when it has none). */
+  messageHtml?(emailId: string, msgId: string): Promise<string>;
   setStar?(id: string, on: boolean): Promise<void>;
   archive?(id: string): Promise<void>;
   /** Create or update the interview on the user's Google Calendar. */

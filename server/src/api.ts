@@ -9,6 +9,7 @@ import { buildRawReply, gmailFor, isRateLimitError } from './google/gmail';
 import { MOCK_USER, mockTokens } from './google/mock';
 import { authUrl, beginAuth, exchangeCode, fetchUserInfo, revokeToken, takeAuthRequest, type TokenSet, type UserInfo } from './google/oauth';
 import { MOCK_MS_USER, MS_SCOPES, msAuthUrl, msExchangeCode, msUserInfo } from './microsoft/oauth';
+import { messageHtml } from './mime';
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
@@ -298,6 +299,26 @@ export function createApi(): express.Express {
         res.json({ ok: true });
       }),
     );
+  // The original HTML of one message, fetched when it is opened (not stored: it would bloat every snapshot).
+  app.get(
+    '/mail/:id/messages/:msgId/html',
+    requireRole('member'),
+    wrap(async (req, res) => {
+      const { acctId, threadId } = splitId(String(req.params.id));
+      const a = await acctOr404(res, acctId);
+      if (!a) return;
+      const msgId = String(req.params.msgId);
+      const mail = await readMail(a.id);
+      const group = conversationGroups(Object.values(mail.threads)).get(threadId) || [mail.threads[threadId]];
+      if (!group.some((t) => t?.messages.some((m) => m.id === msgId))) {
+        res.status(404).json({ error: 'Unknown message' });
+        return;
+      }
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.json({ html: messageHtml(await gmailFor(a).getMessage(msgId, 'html')) });
+    }),
+  );
+
   labelRoute('read', () => ({ add: [], remove: ['UNREAD'] }));
   labelRoute('star', (b) => (b.on ? { add: ['STARRED'], remove: [] } : { add: [], remove: ['STARRED'] }));
   labelRoute('archive', () => ({ add: [], remove: ['INBOX'] }));

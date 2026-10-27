@@ -82,6 +82,10 @@ export class ApiMailProvider implements MailProvider {
     await call('/api/accounts/' + enc(id), 'DELETE');
   }
 
+  async messageHtml(emailId: string, msgId: string): Promise<string> {
+    return (await call<{ html: string }>('/api/mail/' + enc(emailId) + '/messages/' + enc(msgId) + '/html')).html || '';
+  }
+
   async markRead(id: string): Promise<void> {
     await call('/api/mail/' + enc(id) + '/read', 'POST', {});
   }

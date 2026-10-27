@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
+import { provider, setProvider } from '@/data/provider';
 import type { Page } from '@/data/types';
 import { seedMembers } from '@/lib/roles';
 import { DEFAULT_SETTINGS, useStore, type AppState } from '@/store/store';
@@ -123,6 +124,28 @@ describe('App', () => {
     act(() => useStore.getState().openView('action'));
     act(() => useStore.getState().openView('inbox'));
     expect(range()).toBe('1–50 of 120');
+  });
+
+  it('a message with an HTML version is shown as its sender laid it out, in a sandboxed frame', async () => {
+    const demo = provider;
+    const asked: string[] = [];
+    setProvider(Object.assign(Object.create(demo), { messageHtml: async (emailId: string, msgId: string) => (asked.push(emailId + '/' + msgId), '<table><tr><td>HOURS WORKED</td><td>15:14</td></tr></table>') }));
+    try {
+      const d = buildDemoData();
+      const emails = d.emails.map((e) => (e.id === 'e1' ? { ...e, thread: e.thread.map((m, i) => ({ ...m, id: 'msg' + i })) } : e));
+      reset({ page: 'inbox', selId: 'e1', emails });
+      mount();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      const frame = container.querySelector<HTMLIFrameElement>('iframe.hframe');
+      expect(frame).not.toBeNull();
+      expect(frame!.getAttribute('sandbox')).not.toContain('allow-scripts');
+      expect(frame!.getAttribute('srcdoc')).toContain('<td>15:14</td>');
+      expect(asked[0]).toMatch(/^e1\/msg\d$/);
+    } finally {
+      setProvider(demo);
+    }
   });
 
   it('scheduling flow: pick slots, generate, confirm send', () => {

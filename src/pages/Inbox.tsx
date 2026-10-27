@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore, type AppState } from '@/store/store';
 import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
-import type { CalEvent, Cat, Email } from '@/data/types';
+import type { CalEvent, Cat, Email, ThreadMsg } from '@/data/types';
 import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
@@ -321,6 +321,84 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
   );
 }
 
+/** HTML bodies already loaded this session, by email id + message id ('' = the message has none). */
+const htmlCache = new Map<string, string>();
+
+/** A message as its sender laid it out (HTML, loaded on open), else as text. */
+function MsgBody({ emailId, m }: { emailId: string; m: ThreadMsg }) {
+  const key = m.id && provider.messageHtml ? emailId + '/' + m.id : '';
+  const [, loaded] = useState(0);
+  const html = key ? htmlCache.get(key) : '';
+  useEffect(() => {
+    if (!key || htmlCache.has(key) || !m.id || !provider.messageHtml) return;
+    let live = true;
+    provider
+      .messageHtml(emailId, m.id)
+      .catch(() => '')
+      .then((h) => {
+        htmlCache.set(key, h);
+        if (live) loaded((x) => x + 1);
+      });
+    return () => {
+      live = false;
+    };
+  }, [key, emailId, m.id]);
+  if (html) return <HtmlFrame html={html} />;
+  if (html === undefined) return <div className="tbody mut">Loading message…</div>;
+  return (
+    <div className="tbody">
+      <Linked text={tidyBody(m.body)} />
+    </div>
+  );
+}
+
+/** Frame styles: a white page like Gmail's, images fit the width, quoted history hidden. */
+const FRAME_HEAD =
+  '<!doctype html><html><head><meta charset="utf-8">' +
+  '<meta http-equiv="Content-Security-Policy" content="script-src \'none\'; object-src \'none\'; frame-src \'none\'; form-action \'none\'">' +
+  '<base target="_blank"><style>html{overflow-y:hidden;overflow-x:auto}body{margin:0;padding:16px;background:#fff;color:#222;font:14px/1.5 Arial,Helvetica,sans-serif;overflow-wrap:anywhere}' +
+  'img{max-width:100%}.gmail_quote,blockquote[type=cite],#divRplyFwdMsg,#divRplyFwdMsg~*{display:none}</style></head><body>';
+
+/**
+ * Email HTML in a sandboxed frame: no scripts, links open in a new tab, and the frame grows to its
+ * content so the conversation scrolls as one page.
+ */
+function HtmlFrame({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(160);
+  const doc = useMemo(() => FRAME_HEAD + html + '</body></html>', [html]);
+  useEffect(() => {
+    const f = ref.current;
+    if (!f) return;
+    let ro: ResizeObserver | undefined;
+    const fit = () => {
+      const d = f.contentDocument;
+      if (!d?.documentElement) return;
+      setHeight(Math.max(40, d.documentElement.scrollHeight));
+      if (!ro && typeof ResizeObserver !== 'undefined' && d.body) {
+        ro = new ResizeObserver(() => setHeight(Math.max(40, d.documentElement.scrollHeight)));
+        ro.observe(d.body);
+      }
+    };
+    f.addEventListener('load', fit);
+    fit();
+    return () => {
+      f.removeEventListener('load', fit);
+      ro?.disconnect();
+    };
+  }, [doc]);
+  return (
+    <iframe
+      ref={ref}
+      className="hframe"
+      title="Message"
+      sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+      srcDoc={doc}
+      style={{ height }}
+    />
+  );
+}
+
 /** The conversation laid out like a mail client: one card, a row per message, older ones folded. */
 function Thread({ e, acctAddr }: { e: Email; acctAddr: string }) {
   const st = useStore();
@@ -360,9 +438,7 @@ function Thread({ e, acctAddr }: { e: Email; acctAddr: string }) {
                   <div className="to">
                     to {m.mine ? other : <span title={acctAddr}>me ({acctAddr})</span>}
                   </div>
-                  <div className="tbody">
-                    <Linked text={tidyBody(m.body)} />
-                  </div>
+                  <MsgBody emailId={e.id} m={m} />
                   {!!m.atts?.length && (
                     <div className="tatt">
                       {m.atts.map((at) => (

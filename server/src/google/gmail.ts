@@ -15,7 +15,8 @@ export interface GmailApi {
   listMessages(query: string, max: number): Promise<{ id: string; threadId: string }[]>;
   /** Every message in a conversation, sent and received, oldest first. */
   getThread(threadId: string): Promise<GmailMessage[]>;
-  getMessage(id: string, format?: 'full' | 'minimal'): Promise<GmailMessage>;
+  /** 'html' is 'full' with the HTML body kept (Outlook otherwise asks Graph for plain text). */
+  getMessage(id: string, format?: 'full' | 'minimal' | 'html'): Promise<GmailMessage>;
   modifyThread(threadId: string, add: string[], remove: string[]): Promise<void>;
   send(raw: string, threadId?: string): Promise<{ id: string }>;
 }
@@ -125,8 +126,8 @@ export class RealGmail implements GmailApi {
     return (await this.call<{ messages?: GmailMessage[] }>('/threads/' + encodeURIComponent(threadId) + '?format=full', {}, 10)).messages || [];
   }
 
-  getMessage(id: string, format: 'full' | 'minimal' = 'full'): Promise<GmailMessage> {
-    return this.call<GmailMessage>('/messages/' + encodeURIComponent(id) + '?format=' + format);
+  getMessage(id: string, format: 'full' | 'minimal' | 'html' = 'full'): Promise<GmailMessage> {
+    return this.call<GmailMessage>('/messages/' + encodeURIComponent(id) + '?format=' + (format === 'html' ? 'full' : format));
   }
 
   async modifyThread(threadId: string, add: string[], remove: string[]): Promise<void> {

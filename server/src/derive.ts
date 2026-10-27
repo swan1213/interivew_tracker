@@ -97,6 +97,7 @@ export function threadToEmail(acct: StoredAccount, t: StoredThread, now: Date): 
   const id = acct.id + ':' + t.id;
   const labels = head.labelIds;
   const thread: ThreadMsg[] = msgs.map((m, i) => ({
+    id: m.id,
     from: m.isMine ? 'You (' + (acct.name || acct.email) + ')' : m.fromName,
     addr: m.fromAddr,
     when: whenLabel(m.date),

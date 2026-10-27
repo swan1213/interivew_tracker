@@ -49,6 +49,8 @@ export interface Account {
 export interface Attachment { name: string; size: string }
 
 export interface ThreadMsg {
+  /** Mailbox message id, to load the original HTML on demand. */
+  id?: string;
   from: string;
   addr: string;
   when: string;

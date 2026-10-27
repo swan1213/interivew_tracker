@@ -408,3 +408,4 @@ body{margin:0;background:#F6F6F8}
 .trf .sel{height:30px;padding:0 8px;font-size:12.5px}
 .trd{display:inline-flex;align-items:center;gap:6px;color:var(--tx3);font-size:12.5px}
 .trd input[type=date]{width:132px;color:var(--tx)}
+.hframe{display:block;width:100%;border:0;border-radius:8px;background:#fff;margin-top:14px}

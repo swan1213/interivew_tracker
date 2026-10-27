@@ -131,6 +131,30 @@ export function parseMessage(m: GmailMessage, myEmail: string): ParsedMessage {
   };
 }
 
+/** Largest HTML body shown; bigger ones fall back to the text view. */
+const HTML_MAX = 2_000_000;
+
+/** The HTML part of a message, made safe to show in a sandboxed frame ('' when it has none). */
+export function messageHtml(m: GmailMessage): string {
+  const out = { plain: [] as string[], html: [] as string[], atts: [] as Attachment[] };
+  walk(m.payload, out);
+  const html = out.html.join('\n');
+  return html && html.length <= HTML_MAX ? sanitizeHtml(html) : '';
+}
+
+/**
+ * Removes what could run or submit anything: scripts, frames, plugins, forms, <base> / <meta> /
+ * <link>, event-handler attributes and javascript: URLs. The frame it is shown in also blocks scripts.
+ */
+export function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(script|iframe|object|embed|noscript|form)\b[\s\S]*?<\/\1\s*>/gi, '')
+    .replace(/<\/?(script|iframe|frame|frameset|object|embed|applet|base|meta|link|form|input|button|textarea|select)\b[^>]*>/gi, '')
+    .replace(/\s(on[a-z]+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s(href|src|action|formaction|xlink:href)\s*=\s*(["']?)\s*(javascript|vbscript|data:text\/html)[^"'>]*\2/gi, ' $1="#"');
+}
+
 /** Strip quoted replies ("On … wrote:" and "> " lines) so classification sees only the new text. */
 export function stripQuoted(body: string): string {
   const lines = body.split('\n');

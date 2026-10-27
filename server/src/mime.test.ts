@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { b64url } from './crypto';
-import { cleanBody, humanSize, parseAddress, parseMessage, stripHtml, stripQuoted, type GmailMessage } from './mime';
+import { cleanBody, humanSize, messageHtml, parseAddress, parseMessage, sanitizeHtml, stripHtml, stripQuoted, type GmailMessage } from './mime';
 
 describe('Gmail message parsing', () => {
   it('reads headers, prefers text/plain, collects attachments and flags', () => {
@@ -76,5 +76,28 @@ describe('plain-text bodies that carry HTML', () => {
   it('strips tags some senders put in the text part, and leaves ordinary text alone', () => {
     expect(cleanBody('Line one<br>Line two<p>Para</p>')).toBe('Line one\nLine two\nPara');
     expect(cleanBody('Salary: 5 < 6 and AT&T is fine')).toBe('Salary: 5 < 6 and AT&T is fine');
+  });
+});
+
+describe('HTML bodies for display', () => {
+  it('keeps layout and images, removes anything that could run or submit', () => {
+    const raw =
+      '<html><head><meta http-equiv="refresh" content="0;url=https://x.example"><base href="https://evil.example/"><link rel="stylesheet" href="https://x.example/a.css"><style>td{color:#333}</style></head>' +
+      '<body onload="alert(1)"><script>alert(2)</script><table><tr><td>HOURS WORKED</td><td>15:14</td></tr></table>' +
+      '<img src="https://img.example/logo.png" onerror="alert(3)"><a href="javascript:alert(4)">x</a><a href="https://hubstaff.com">Hubstaff</a>' +
+      '<form action="https://x.example"><input name="p"></form><iframe src="https://x.example"></iframe></body></html>';
+    const s = sanitizeHtml(raw);
+    expect(s).toContain('<td>15:14</td>');
+    expect(s).toContain('<img src="https://img.example/logo.png">');
+    expect(s).toContain('<a href="https://hubstaff.com">');
+    expect(s).toContain('<style>td{color:#333}</style>');
+    expect(s).not.toMatch(/script|onload|onerror|javascript:|<meta|<base|<link|<form|<input|<iframe/i);
+  });
+
+  it('takes the text/html part of a message, or nothing', () => {
+    const part = (mimeType: string, text: string) => ({ mimeType, body: { data: b64url(Buffer.from(text, 'utf8')), size: text.length } });
+    const msg = (parts: ReturnType<typeof part>[]): GmailMessage => ({ id: 'h', threadId: 't', payload: { mimeType: 'multipart/alternative', parts } });
+    expect(messageHtml(msg([part('text/plain', 'Hi'), part('text/html', '<p>Hi <b>there</b></p>')]))).toBe('<p>Hi <b>there</b></p>');
+    expect(messageHtml(msg([part('text/plain', 'Hi')]))).toBe('');
   });
 });
