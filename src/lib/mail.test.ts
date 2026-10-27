@@ -59,7 +59,7 @@ describe('inbox filtering', () => {
   it('searches across company, role, category label and body', () => {
     expect(ids(filterEmails(data.emails, { ...base, q: 'chime' }, data.apps))).toEqual(['e2']);
     expect(ids(filterEmails(data.emails, { ...base, q: 'offer' }, data.apps))).toContain('e9');
-    expect(ids(filterEmails(data.emails, { ...base, q: 'interview scheduling' }, data.apps))).toContain('e1');
+    expect(ids(filterEmails(data.emails, { ...base, q: 'under review' }, data.apps))).toContain('e1');
     expect(filterEmails(data.emails, { ...base, q: 'zzzz-nothing' }, data.apps)).toHaveLength(0);
   });
 

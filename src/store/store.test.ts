@@ -36,19 +36,19 @@ describe('store actions', () => {
   });
 
   it('manual kanban moves lock the card and clear AI suggestions', () => {
-    st().moveApp('a7', 'tech', true);
+    st().moveApp('a7', 'next', true);
     const a = st().apps.find((x) => x.id === 'a7')!;
-    expect(a.stage).toBe('tech');
+    expect(a.stage).toBe('next');
     expect(a.locked).toBe(true);
     expect(a.ai).toBeNull();
     expect(a.timeline[0].src).toBe('You (manual, kept)');
-    expect(st().activity[0].text).toBe('Atlassian moved to Technical Interview');
+    expect(st().activity[0].text).toBe('Atlassian moved to Next Step Interview');
   });
 
   it('accepting an AI suggestion moves without locking', () => {
-    st().moveApp('a8', 'tech', false);
+    st().moveApp('a8', 'next', false);
     const a = st().apps.find((x) => x.id === 'a8')!;
-    expect(a.stage).toBe('tech');
+    expect(a.stage).toBe('next');
     expect(a.locked).toBe(false);
   });
 

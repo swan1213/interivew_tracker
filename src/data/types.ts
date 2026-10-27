@@ -4,9 +4,7 @@ export type Cat =
   | 'action' | 'invite' | 'avail' | 'confirmed' | 'applied'
   | 'status' | 'rejected' | 'auto' | 'offer' | 'review' | 'sent' | 'other';
 export type Pri = 'critical' | 'high' | 'normal' | 'low';
-export type StageKey =
-  | 'applied' | 'review' | 'screen' | 'sched' | 'confirmed'
-  | 'tech' | 'final' | 'offer' | 'hired' | 'closed';
+export type StageKey = 'applied' | 'review' | 'first' | 'next' | 'offer' | 'hired' | 'closed';
 export type EvStage = 'screen' | 'tech' | 'mgr' | 'final' | 'offer' | 'busy';
 export type IvStatus = 'none' | 'awaiting' | 'confirmed';
 export type EmailMode = 'avail' | 'confirm' | 'resched' | 'assess';

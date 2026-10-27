@@ -21,15 +21,15 @@ describe('merging a server snapshot with local workflow state', () => {
 
   it('local kanban moves survive; a card the user never moved follows the server stage', () => {
     const local = buildDemoData();
-    local.apps = local.apps.map((a) => (a.id === 'a1' ? { ...a, stage: 'tech' as const, locked: true, notes: 'prep notes' } : a.id === 'a2' ? { ...a, stage: 'review' as const, locked: false } : a));
+    local.apps = local.apps.map((a) => (a.id === 'a1' ? { ...a, stage: 'next' as const, locked: true, notes: 'prep notes' } : a.id === 'a2' ? { ...a, stage: 'review' as const, locked: false } : a));
     const out = mergeSnapshot(local, server);
     const a1 = out.apps.find((a) => a.id === 'a1')!;
-    expect(a1.stage).toBe('tech');
+    expect(a1.stage).toBe('next');
     expect(a1.locked).toBe(true);
     expect(a1.notes).toBe('prep notes');
     expect(a1.ai).toBeNull();
     const a2 = out.apps.find((a) => a.id === 'a2')!;
-    expect(a2.stage).toBe('confirmed');
+    expect(a2.stage).toBe('review');
     expect(a2.ai).toBeNull();
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CalEvent } from '@/data/types';
-import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions } from './calendar';
+import type { Application } from '@/data/types';
+import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions, meetingStages } from './calendar';
 
 const ev = (id: string, start: number, end: number): CalEvent => ({ id, kind: 'interview', co: id, role: '', stage: 'screen', date: '2026-10-27', start, end, added: true });
 const lanes = (m: Map<string, { lane: number; lanes: number }>) => Object.fromEntries([...m].map(([id, l]) => [id, l.lane + '/' + l.lanes]));
@@ -66,5 +67,28 @@ describe('meetings that count as interviews', () => {
     expect(meetingMentions(busy('Quick chat', { organizer: 'santiago@getclera.com' }), 'Clera')).toBe(true);
     expect(meetingMentions(busy('Interview with Socket'), 'Docker')).toBe(false);
     expect(meetingMentions(busy('Anything'), 'AI')).toBe(false);
+  });
+});
+
+describe('tracker stages from calendar meetings', () => {
+  const app = (co: string, more: Partial<Application> = {}): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [], ...more });
+  const meet = (id: string, co: string, date: string, more: Partial<CalEvent> = {}): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'recruiter@acme.example', ...more });
+  const stages = (apps: Application[], evs: CalEvent[]) => Object.fromEntries(meetingStages(apps, evs, [], '2026-10-27').map((a) => [a.co, a.stage]));
+
+  it('one meeting is the first interview, two or more the next step; none stays where the mail put it', () => {
+    const evs = [meet('1', 'Interview with Decagon', '2026-10-21'), meet('2', 'Interview with FalconX', '2026-10-07'), meet('3', 'Interview with FalconX', '2026-10-13')];
+    expect(stages([app('Decagon'), app('FalconX'), app('Chime', { stage: 'applied' })], evs)).toEqual({ Decagon: 'first', FalconX: 'next', Chime: 'applied' });
+  });
+
+  it('keeps manual moves, offers and rejections; old interview stages without a meeting go back to review', () => {
+    const evs = [meet('1', 'Interview with Acme', '2026-10-21'), meet('2', 'Interview with Acme', '2026-10-28')];
+    expect(stages([app('Acme', { stage: 'closed' })], evs)).toEqual({ Acme: 'closed' });
+    expect(stages([app('Acme', { stage: 'review', locked: true })], evs)).toEqual({ Acme: 'review' });
+    expect(stages([app('Old', { stage: 'tech' as Application['stage'], locked: true }), app('Gone', { stage: 'sched' as Application['stage'] })], evs)).toEqual({ Old: 'next', Gone: 'review' });
+  });
+
+  it('shows the upcoming meeting as the next step', () => {
+    const [a] = meetingStages([app('Acme')], [meet('1', 'Interview with Acme', '2026-10-28')], [], '2026-10-27');
+    expect(a.next).toMatch(/Oct 28, 1:00 PM ET/);
   });
 });

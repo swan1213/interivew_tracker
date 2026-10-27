@@ -468,10 +468,10 @@ export const useStore = create<AppState>()((set, get) => {
       let apps = s.apps;
       let events = s.events;
       if (e.mode === 'avail') {
-        apps = apps.map((a) => (a.co === co ? { ...a, stage: 'sched' as StageKey, next: 'Awaiting confirmation (you sent availability)', activity: 'You replied, just now', ai: null } : a));
+        apps = apps.map((a) => (a.co === co ? { ...a, next: 'Awaiting confirmation (you sent availability)', activity: 'You replied, just now', ai: null } : a));
       }
       if (e.mode === 'resched') {
-        apps = apps.map((a) => (a.co === co ? { ...a, stage: 'sched' as StageKey, next: 'Awaiting confirmation of new time', activity: 'You replied, just now', ai: null } : a));
+        apps = apps.map((a) => (a.co === co ? { ...a, next: 'Awaiting confirmation of new time', activity: 'You replied, just now', ai: null } : a));
         events = events.map((v) => (v.id === e.evId ? { ...v, pendingNote: 'Awaiting ' + (co || 'the recruiter') + ' to confirm the new time' } : v));
       }
       set({

@@ -65,11 +65,8 @@ export const CAT_KEYS = Object.keys(CAT) as Cat[];
 export const STAGES: { k: StageKey; l: string; c: string }[] = [
   { k: 'applied', l: 'Applied', c: '#6B7390' },
   { k: 'review', l: 'Under Review', c: '#0B7AB0' },
-  { k: 'screen', l: 'Recruiter Screening', c: '#8B3FD6' },
-  { k: 'sched', l: 'Interview Scheduling', c: '#C0540C' },
-  { k: 'confirmed', l: 'Interview Confirmed', c: '#1E8A4C' },
-  { k: 'tech', l: 'Technical Interview', c: '#4F46E5' },
-  { k: 'final', l: 'Final Interview', c: '#0E8F83' },
+  { k: 'first', l: 'First Interview', c: '#8B3FD6' },
+  { k: 'next', l: 'Next Step Interview', c: '#4F46E5' },
   { k: 'offer', l: 'Offer Received', c: '#B7791F' },
   { k: 'hired', l: 'Hired', c: '#15803D' },
   { k: 'closed', l: 'Rejected / Closed', c: '#9A5A66' },

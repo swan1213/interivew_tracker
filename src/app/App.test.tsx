@@ -7,6 +7,7 @@ import { provider, setProvider } from '@/data/provider';
 import type { Page } from '@/data/types';
 import { seedMembers } from '@/lib/roles';
 import { DEFAULT_SETTINGS, useStore, type AppState } from '@/store/store';
+import { trackedApps } from '@/store/selectors';
 import { App } from './App';
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -231,7 +232,7 @@ describe('App', () => {
     pick('Account', 'all');
     pick('Status', 'review');
     expect(container.querySelectorAll('.kcol')).toHaveLength(1);
-    expect(cards()).toBe(useStore.getState().apps.filter((a) => a.stage === 'review').length);
+    expect(cards()).toBe(trackedApps(useStore.getState()).filter((a) => a.stage === 'review').length);
     pick('Status', 'all');
     pick('Applied from', '2026-10-20');
     const since20 = cards();
@@ -241,6 +242,11 @@ describe('App', () => {
     expect(cards()).toBeLessThan(since20);
     click('.trf .btn');
     expect(cards()).toBe(total);
+    click('[aria-label="Applied in"] button:nth-child(2)');
+    expect(useStore.getState().trFrom).toBe('2026-10-26');
+    expect(useStore.getState().trTo).toBe(useStore.getState().today);
+    click('[aria-label="Applied in"] button:nth-child(2)');
+    expect(useStore.getState().trFrom).toBe('');
   });
 
   it('sidebar counts follow the selected account', () => {
@@ -256,13 +262,13 @@ describe('App', () => {
   it('tracker: accepting an AI suggestion moves the card', () => {
     reset({ page: 'track' });
     mount();
-    // First suggestion in column order is Halcyon Health (Under Review → Interview Scheduling).
+    // The demo's suggestion: Meridian Labs, Applied → Under Review.
     const accept = Array.from(container.querySelectorAll('.kc .ai .btn.pri'))[0] as HTMLButtonElement;
     act(() => accept.click());
-    const a10 = useStore.getState().apps.find((a) => a.id === 'a10')!;
-    expect(a10.stage).toBe('sched');
-    expect(a10.locked).toBe(false);
-    expect(container.innerHTML).toContain('Halcyon Health moved to Interview Scheduling');
+    const a14 = useStore.getState().apps.find((a) => a.id === 'a14')!;
+    expect(a14.stage).toBe('review');
+    expect(a14.locked).toBe(false);
+    expect(container.innerHTML).toContain('Meridian Labs moved to Under Review');
     click('.kcm');
     expect(container.innerHTML).toContain('Application detail');
   });

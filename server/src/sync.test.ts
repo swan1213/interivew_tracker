@@ -68,8 +68,8 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(snap.events.some((v) => v.co === 'Northwind Cloud' && v.stage === 'offer')).toBe(true);
 
     const apps = snap.apps;
-    expect(apps.find((a) => a.co === 'Microsoft')?.stage).toBe('sched');
-    expect(apps.find((a) => a.co === 'Amazon')?.stage).toBe('confirmed');
+    expect(apps.find((a) => a.co === 'Microsoft')?.stage).toBe('review');
+    expect(apps.find((a) => a.co === 'Amazon')?.stage).toBe('review');
     expect(apps.find((a) => a.co === 'Coinbase')?.stage).toBe('closed');
     expect(apps.find((a) => a.co === 'Northwind Cloud')?.stage).toBe('offer');
     expect(apps.find((a) => a.co === 'Stripe')?.stage).toBe('applied');

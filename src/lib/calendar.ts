@@ -1,4 +1,5 @@
-import type { CalEvent } from '@/data/types';
+import type { Application, CalEvent, StageKey } from '@/data/types';
+import { fmtT, lab } from './time';
 
 /** A Google Calendar event whose title says it is an interview. */
 export const looksLikeInterview = (title: string): boolean => /\b(interview|screen(ing)?|recruiter|hiring manager|onsite|on-site|technical|panel|final round)\b/i.test(title);
@@ -107,4 +108,27 @@ export function layoutLanes(evs: CalEvent[], minDur = 0): Map<string, Lane> {
   }
   close();
   return out;
+}
+
+/** Stage keys from before First / Next Step Interview replaced the five interview columns. */
+const OLD_STAGE: Record<string, StageKey> = { screen: 'first', sched: 'first', confirmed: 'first', tech: 'next', final: 'next' };
+
+/** Stages the calendar never overrides: the outcome is known. */
+const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
+
+/**
+ * Tracker stages from the calendar: a company with one interview meeting on your calendar is at
+ * First Interview, with two or more at Next Step Interview. Cards you moved yourself, and offers,
+ * hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one.
+ */
+export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
+  const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  return apps.map((a) => {
+    const stage = OLD_STAGE[a.stage] || a.stage;
+    if (a.locked || SETTLED.includes(stage)) return stage === a.stage ? a : { ...a, stage };
+    const mine = meetings.filter((v) => (!!a.emailId && v.emailId === a.emailId) || meetingMentions(v, a.co));
+    if (!mine.length) return stage === 'first' || stage === 'next' ? { ...a, stage: 'review' } : a;
+    const up = mine.find((v) => v.date >= today);
+    return { ...a, stage: mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+  });
 }

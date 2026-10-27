@@ -1,16 +1,28 @@
 import { drag, useStore } from '@/store/store';
-import { getAcct } from '@/store/selectors';
+import { getAcct, trackedApps } from '@/store/selectors';
 import { STAGES } from '@/data/constants';
 import type { Application, StageKey } from '@/data/types';
 import { appliedDay, rangeDays } from '@/lib/mail';
+import { mondayOf } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { AcDot, CoBadge, Fact, PriBadge } from '@/ui/bits';
+import { AcDot, CoBadge, Fact, PriBadge, Seg } from '@/ui/bits';
+
+type Quick = 'today' | 'week' | 'month' | '';
+const QUICK: { k: Quick; l: string }[] = [
+  { k: 'today', l: 'Today' },
+  { k: 'week', l: 'Week' },
+  { k: 'month', l: 'Month' },
+];
+
+/** First day of a quick range: today, this week (from Monday) or this month. */
+const quickFrom = (k: Quick, today: string): string => (k === 'today' ? today : k === 'week' ? mondayOf(today) : today.slice(0, 8) + '01');
 
 export function Tracker() {
   const st = useStore();
   const [from, to] = rangeDays({ rangeFilter: 'custom', rangeFrom: st.trFrom, rangeTo: st.trTo }, st.today);
-  const apps = st.apps.filter((a) => {
+  const all = trackedApps(st);
+  const apps = all.filter((a) => {
     if (st.acctFilter !== 'all' && a.acct !== st.acctFilter) return false;
     if (!from && !to) return true;
     const d = appliedDay(a.applied, st.today);
@@ -20,7 +32,8 @@ export function Tracker() {
   const shown = st.trStage === 'all' ? apps.length : apps.filter((a) => a.stage === st.trStage).length;
   const filtered = st.acctFilter !== 'all' || !!st.trFrom || !!st.trTo || st.trStage !== 'all';
   const nAi = apps.filter((x) => x.ai && !x.locked).length;
-  const app = st.apps.find((x) => x.id === st.appSel);
+  const app = all.find((x) => x.id === st.appSel);
+  const quick = QUICK.find((q) => st.trTo === st.today && st.trFrom === quickFrom(q.k, st.today))?.k || '';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}>
@@ -29,10 +42,11 @@ export function Tracker() {
           <div>
             <h1>Application tracker</h1>
             <p>
-              {filtered ? shown + ' of ' + st.apps.length + ' applications' : st.apps.length + ' applications tracked across ' + st.accts.length + ' account' + (st.accts.length === 1 ? '' : 's')} · drag cards between columns; your manual moves are never overwritten by AI suggestions.
+              {filtered ? shown + ' of ' + all.length + ' applications' : all.length + ' applications tracked across ' + st.accts.length + ' account' + (st.accts.length === 1 ? '' : 's')} · drag cards between columns; your manual moves are never overwritten by AI suggestions.
             </p>
           </div>
           <div className="ln wrap trf">
+            <Seg value={quick} options={QUICK} onChange={(k) => st.patch(st.trFrom === quickFrom(k, st.today) && st.trTo === st.today ? { trFrom: '', trTo: '' } : { trFrom: quickFrom(k, st.today), trTo: st.today })} ariaLabel="Applied in" />
             <span className="trd">
               Applied
               <input type="date" className="sel" value={st.trFrom} max={st.trTo || undefined} onChange={(e) => st.patch({ trFrom: e.target.value })} aria-label="Applied from" />

@@ -1,5 +1,5 @@
 import { useStore, type AppState } from '@/store/store';
-import { actionCount, eventAccount, getAcct, visibleAll } from '@/store/selectors';
+import { actionCount, eventAccount, getAcct, trackedApps, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { DFULL, MN, PRI_RANK, STAGES, STG, type IconName } from '@/data/constants';
 import type { CalEvent, Email } from '@/data/types';
@@ -111,7 +111,8 @@ export function Dashboard() {
     { label: 'Offers received', icon: 'award', n: offers, go: () => st.openView('offers') },
   ];
 
-  const maxN = Math.max(1, ...STAGES.map((s) => st.apps.filter((a) => a.stage === s.k).length));
+  const tracked = trackedApps(st);
+  const maxN = Math.max(1, ...STAGES.map((s) => tracked.filter((a) => a.stage === s.k).length));
 
   return (
     <div className="scroll">
@@ -224,7 +225,7 @@ export function Dashboard() {
             </div>
             <div className="cb">
               {STAGES.map((s) => {
-                const n = st.apps.filter((a) => a.stage === s.k).length;
+                const n = tracked.filter((a) => a.stage === s.k).length;
                 return <RowBar key={s.k} name={s.l} n={n} pct={Math.round((n / maxN) * 100)} color={s.c} title={s.l + ': ' + n + ' applications'} />;
               })}
             </div>

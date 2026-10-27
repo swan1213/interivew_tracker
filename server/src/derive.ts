@@ -36,7 +36,7 @@ const NOTIF_TITLE: Record<string, string> = {
   offer: 'Offer received',
   action: 'Recruiter requesting information',
 };
-const STAGE_OF_CAT: Partial<Record<string, StageKey>> = { applied: 'applied', status: 'review', invite: 'sched', avail: 'sched', confirmed: 'confirmed', offer: 'offer', rejected: 'closed' };
+const STAGE_OF_CAT: Partial<Record<string, StageKey>> = { applied: 'applied', status: 'review', invite: 'review', avail: 'review', confirmed: 'review', offer: 'offer', rejected: 'closed' };
 
 export function evStageOf(stageText: string): EvStage {
   const t = stageText.toLowerCase();

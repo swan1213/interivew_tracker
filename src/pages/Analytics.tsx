@@ -1,5 +1,5 @@
 import { useStore } from '@/store/store';
-import { getAcct } from '@/store/selectors';
+import { getAcct, trackedApps } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { STAGES } from '@/data/constants';
 import type { CalEvent } from '@/data/types';
@@ -54,7 +54,7 @@ export function Analytics() {
   const tN = inRange.length || 1;
   const rangeLabel = st.anRange === 'all' ? 'All time' : 'Last ' + st.anRange + ' days';
 
-  const apps = st.apps.filter((a) => inAcct(a.acct));
+  const apps = trackedApps(st).filter((a) => inAcct(a.acct));
   const counts = STAGES.map((s) => ({ label: s.l, color: s.c, n: apps.filter((a) => a.stage === s.k).length }));
   const total = counts.reduce((s, c) => s + c.n, 0) || 1;
   let acc = 0;
