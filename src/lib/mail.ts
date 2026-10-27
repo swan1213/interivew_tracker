@@ -172,6 +172,31 @@ export function firstLink(body: string): string | null {
 /** Automated senders nobody reads replies to. */
 export const isNoReply = (addr: string): boolean => /no-?reply|do-?not-?reply|^notifications?@|^alerts?@|mailer-daemon|^news(letter)?@|^updates?@/i.test(addr);
 
+const MACHINE_NAME = /^(no-?reply|do-?not-?reply|notifications?|alerts?|mailer-daemon|info|support|hello|team)$/i;
+
+/** A sender's display name; machine names like "no-reply" give way to the company, else the sending domain. */
+export function senderName(name: string, addr: string, company = ''): string {
+  const n = name.trim();
+  if (n && n.toLowerCase() !== addr.toLowerCase() && !MACHINE_NAME.test(n)) return n;
+  if (company) return company;
+  const host = (addr.split('@')[1] || '').split('.');
+  const brand = host.length > 1 ? host[host.length - 2] : host[0];
+  return brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : n || addr;
+}
+
+/** Who is in a conversation, Gmail style: "Priya", "Tom, me", "Anna .. Ravi" (first names once several people take part). */
+export function participants(e: Pick<Email, 'thread' | 'fromName' | 'fromAddr' | 'company'>): string {
+  const names: string[] = [];
+  for (const m of e.thread) {
+    const n = m.mine ? 'me' : senderName(m.from, m.addr, e.company);
+    if (!names.includes(n)) names.push(n);
+  }
+  if (!names.length) names.push(senderName(e.fromName, e.fromAddr, e.company));
+  if (names.length === 1) return names[0];
+  const short = names.map((n) => (n === 'me' ? n : n.split(/\s+/)[0]));
+  return short.length > 3 ? short[0] + ' .. ' + short[short.length - 1] : short.join(', ');
+}
+
 /** Subject for a reply or forward, without stacking "Re: Re:" or "Fwd: Re:". */
 export const replySubject = (subject: string, forward: boolean): string => (forward ? 'Fwd: ' : 'Re: ') + subject.replace(/^((re|fwd?):\s*)+/i, '');
 

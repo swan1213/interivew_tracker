@@ -153,7 +153,9 @@ font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:13px;l
 .er .body{flex:1;min-width:0;display:flex;flex-direction:column}
 .er .l1{display:flex;align-items:baseline;gap:8px}
 .er .snd{font-weight:450;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;color:var(--tx)}
-.er .tn{font-weight:450;font-size:11.5px;color:var(--tx3);margin-left:5px}
+.er .tn{font-weight:450;color:var(--tx3)}
+.dacts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dacts .due{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;color:var(--warn);margin-left:4px}
 .er .tm2{flex:none;font-size:11.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
 .er .sub{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;color:var(--tx)}
 .er .pv{font-size:12.5px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}

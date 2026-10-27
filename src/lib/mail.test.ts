@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
 import type { Email } from '@/data/types';
 import type { InboxFilters } from './mail';
-import { effCat, filterEmails, inView, matchSaved, previewOf, rangeDays, receivedDay, sortEmails, type RangeFilter } from './mail';
+import { effCat, filterEmails, inView, matchSaved, participants, previewOf, rangeDays, receivedDay, senderName, sortEmails, type RangeFilter } from './mail';
 
 const base: InboxFilters = {
   view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', today: '2026-10-26', nowHour: 9.2, ivFilter: 'all',
@@ -118,5 +118,23 @@ describe('date range filter', () => {
     expect(today.length).toBeGreaterThan(0);
     expect(today.every((e) => receivedDay(e, base.today, base.nowHour) === '2026-10-26')).toBe(true);
     expect(today.length + older.length).toBe(all.length);
+  });
+});
+
+describe('sender line', () => {
+  const msg = (from: string, addr: string, mine = false) => ({ from, addr, when: '', body: '', mine });
+  it('names machine senders after the company, else the sending domain', () => {
+    expect(senderName('no-reply', 'no-reply@mindbodyonline.com', 'Playlist')).toBe('Playlist');
+    expect(senderName('no-reply', 'no-reply@mindbodyonline.com')).toBe('Mindbodyonline');
+    expect(senderName('', 'notifications@greenhouse.io')).toBe('Greenhouse');
+    expect(senderName('Priya Raman', 'priya@example.com', 'Microsoft')).toBe('Priya Raman');
+  });
+  it('lists who took part, Gmail style', () => {
+    const base = { fromName: 'Tom Nguyen', fromAddr: 'tom@atlassian.example', company: 'Atlassian' };
+    expect(participants({ ...base, thread: [msg('Tom Nguyen', 'tom@atlassian.example')] })).toBe('Tom Nguyen');
+    expect(participants({ ...base, thread: [msg('Tom Nguyen', 'tom@atlassian.example'), msg('Jordan Lee', 'j@x.example', true), msg('Tom Nguyen', 'tom@atlassian.example')] })).toBe('Tom, me');
+    expect(participants({ ...base, thread: [msg('no-reply', 'no-reply@mindbodyonline.com'), msg('no-reply', 'no-reply@mindbodyonline.com')], company: 'Playlist' })).toBe('Playlist');
+    expect(participants({ ...base, thread: [msg('Ann Lee', 'a@x'), msg('Bo Kim', 'b@x'), msg('Cy Ray', 'c@x'), msg('Di Fox', 'd@x')] })).toBe('Ann .. Di');
+    expect(participants({ ...base, thread: [] })).toBe('Tom Nguyen');
   });
 });

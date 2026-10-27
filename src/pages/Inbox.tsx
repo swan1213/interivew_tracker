@@ -4,7 +4,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email } from '@/data/types';
-import { effCat, filterEmails, firstLink, isNoReply, needsAction, previewOf, replySubject } from '@/lib/mail';
+import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -146,23 +146,25 @@ function EmailRow({ e, selected }: { e: Email; selected: boolean }) {
   const accts = useStore((s) => s.accts);
   const c = effCat(e);
   const ac = getAcct(accts, e.acct);
+  const who = participants(e);
+  const lead = senderName(e.fromName, e.fromAddr, e.company);
   return (
     <div className={cx('er', e.unread && 'unread', selected && 'sel2')}>
       <button
         type="button"
         className="erb"
         onClick={() => openEmail(e.id)}
-        aria-label={e.fromName + ', ' + e.subject + ', ' + CAT[c].l + (e.unread ? ', unread' : '')}
+        aria-label={who + ', ' + e.subject + ', ' + CAT[c].l + (e.unread ? ', unread' : '')}
         aria-current={selected ? 'true' : undefined}
       >
-        <span className="eav" style={{ background: colorOf(e.fromName) }} aria-hidden="true">
-          {e.fromName.trim().charAt(0).toUpperCase()}
+        <span className="eav" style={{ background: colorOf(lead) }} aria-hidden="true">
+          {lead.charAt(0).toUpperCase()}
         </span>
         <span className="body">
           <span className="l1">
             <span className="snd">
-              {e.fromName}
-              {e.thread.length > 1 && <span className="tn">{e.thread.length}</span>}
+              {who}
+              {e.thread.length > 1 && <span className="tn"> ({e.thread.length})</span>}
             </span>
             <span className="tm2">{e.time}</span>
           </span>
@@ -272,14 +274,18 @@ function MessageDetail({ all, rows }: { all: Email[]; rows: Email[] }) {
         </div>
 
         {need && (acts.length > 0 || e.deadline) && (
-          <div className="act">
-            <Icon name="bolt" />
-            <span className="sp">{e.deadline && <b>Due {e.deadline}</b>}</span>
+          <div className="dacts">
             {acts.map((a) => (
-              <button key={a.label} type="button" className={cx('btn sm', a.primary && 'pri')} onClick={a.run}>
+              <button key={a.label} type="button" className={cx('btn', a.primary && 'pri')} onClick={a.run}>
                 {a.label}
               </button>
             ))}
+            {e.deadline && (
+              <span className="due">
+                <Icon name="clock" sm />
+                Due {e.deadline}
+              </span>
+            )}
           </div>
         )}
 
@@ -334,16 +340,17 @@ function Thread({ e, acctAddr }: { e: Email; acctAddr: string }) {
     <section className="thread" aria-label="Conversation">
       {e.thread.map((m, i) => {
         const isOpen = open.has(i);
-        const color = m.mine ? 'var(--acb)' : colorOf(m.from);
+        const name = m.mine ? m.from : senderName(m.from, m.addr, e.company);
+        const color = m.mine ? 'var(--acb)' : colorOf(name);
         return (
           <article className={cx('tmsg', !isOpen && 'fold')} key={i} onClick={isOpen ? undefined : () => toggle(i)}>
             <span className="tav" style={{ background: color }} aria-hidden="true">
-              {m.from.trim().charAt(0).toUpperCase()}
+              {name.trim().charAt(0).toUpperCase()}
             </span>
             <div className="tmb">
               <button type="button" className="tmh" onClick={(ev) => { ev.stopPropagation(); toggle(i); }} aria-expanded={isOpen} disabled={i === n - 1}>
                 <span className="who">
-                  <b>{m.from}</b>
+                  <b>{name}</b>
                   {isOpen && <span className="addr">&lt;{m.addr}&gt;</span>}
                 </span>
                 <span className="when">{m.when}</span>
@@ -352,11 +359,6 @@ function Thread({ e, acctAddr }: { e: Email; acctAddr: string }) {
                 <>
                   <div className="to">
                     to {m.mine ? other : <span title={acctAddr}>me ({acctAddr})</span>}
-                    {!m.mine && st.peer !== m.addr.toLowerCase() && (
-                      <button type="button" className="lnk" onClick={() => st.showPeer(m.addr)} title={'All mail with ' + m.addr}>
-                        All mail with {m.from.split(' ')[0]}
-                      </button>
-                    )}
                   </div>
                   <div className="tbody">
                     <Linked text={m.body} />
