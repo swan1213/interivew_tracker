@@ -194,6 +194,24 @@ describe('App', () => {
     expect(useStore.getState().calSel).toBe('');
   });
 
+  it('calendar year and quarter views list every meeting', () => {
+    reset({ page: 'cal', calView: 'year' });
+    const html = mount();
+    expect(html).toContain('2026');
+    expect(container.querySelectorAll('.ym')).toHaveLength(12);
+    const oct = container.querySelectorAll('.ym')[9];
+    const inOct = useStore.getState().events.filter((v) => v.added && v.date.startsWith('2026-10')).length;
+    expect(oct.textContent).toContain(inOct + ' events');
+    click('[aria-label="Next"]');
+    expect(useStore.getState().calDate).toBe('2027-10-01');
+    reset({ page: 'cal', calView: 'quarter' });
+    expect(mount()).toContain('Q4 2026');
+    expect(container.querySelectorAll('.qm')).toHaveLength(3);
+    expect(container.querySelectorAll('.qe')).toHaveLength(useStore.getState().events.filter((v) => v.added && v.date >= '2026-10-01' && v.date <= '2026-12-31').length);
+    act(() => useStore.getState().go('cal', { calView: 'quarter' }));
+    expect(window.location.pathname).toBe('/calendar/quarter');
+  });
+
   it('calendar shows one account at a time and keeps past meetings', () => {
     const d = buildDemoData();
     const mine = d.emails.find((e) => e.id === 'e7')!.acct;
@@ -211,7 +229,7 @@ describe('App', () => {
   });
 
   it('tracker filters by account, applied date and status', () => {
-    reset({ page: 'track', trFrom: '', trTo: '', trStage: 'all' });
+    reset({ page: 'track', trRange: '', trStage: 'all' });
     mount();
     const cards = () => container.querySelectorAll('.kc').length;
     const total = useStore.getState().apps.length;
@@ -234,19 +252,22 @@ describe('App', () => {
     expect(container.querySelectorAll('.kcol')).toHaveLength(1);
     expect(cards()).toBe(trackedApps(useStore.getState()).filter((a) => a.stage === 'review').length);
     pick('Status', 'all');
-    pick('Applied from', '2026-10-20');
-    const since20 = cards();
-    expect(since20).toBeLessThan(total);
-    expect(since20).toBeGreaterThan(0);
-    pick('Applied to', '2026-10-22');
-    expect(cards()).toBeLessThan(since20);
+    const range = (n: number) => click('[aria-label="Applied in"] button:nth-child(' + n + ')');
+    range(3); // Month: October
+    const month = cards();
+    expect(useStore.getState().trRange).toBe('month');
+    expect(month).toBeLessThan(total);
+    expect(month).toBeGreaterThan(0);
+    range(1); // Today
+    expect(cards()).toBeLessThan(month);
+    range(4); // Year
+    expect(cards()).toBeGreaterThan(month);
+    range(4); // clicking the active range again clears it
+    expect(useStore.getState().trRange).toBe('');
+    expect(cards()).toBe(total);
+    range(2);
     click('.trf .btn');
     expect(cards()).toBe(total);
-    click('[aria-label="Applied in"] button:nth-child(2)');
-    expect(useStore.getState().trFrom).toBe('2026-10-26');
-    expect(useStore.getState().trTo).toBe(useStore.getState().today);
-    click('[aria-label="Applied in"] button:nth-child(2)');
-    expect(useStore.getState().trFrom).toBe('');
   });
 
   it('sidebar counts follow the selected account', () => {

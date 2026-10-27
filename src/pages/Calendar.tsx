@@ -63,6 +63,8 @@ function useNow(today: string, nowHour: number): { date: string; hour: number } 
 
 const range = (n: number): number[] => Array.from({ length: n }, (_, i) => i);
 const CAL_TABS: { k: CalView; l: string }[] = [
+  { k: 'year', l: 'Year' },
+  { k: 'quarter', l: 'Quarter' },
   { k: 'month', l: 'Month' },
   { k: 'week', l: 'Week' },
   { k: 'day', l: 'Day' },
@@ -84,7 +86,10 @@ export function CalendarPage() {
   const m0 = dObj(cd);
 
   let title: string;
-  if (view === 'month') title = MFULL[m0.getUTCMonth()] + ' ' + m0.getUTCFullYear();
+  const q0 = Math.floor(m0.getUTCMonth() / 3) * 3;
+  if (view === 'year') title = String(m0.getUTCFullYear());
+  else if (view === 'quarter') title = 'Q' + (q0 / 3 + 1) + ' ' + m0.getUTCFullYear() + ' · ' + MN[q0] + ' – ' + MN[q0 + 2];
+  else if (view === 'month') title = MFULL[m0.getUTCMonth()] + ' ' + m0.getUTCFullYear();
   else if (view === 'day') title = lab(cd) + ', ' + m0.getUTCFullYear();
   else if (view === 'agenda') title = 'Agenda · next 14 days';
   else {
@@ -94,9 +99,10 @@ export function CalendarPage() {
   }
 
   const step = (dir: -1 | 1) => () => {
-    if (view === 'month') {
+    if (view === 'month' || view === 'quarter' || view === 'year') {
       const d = dObj(cd);
-      d.setUTCMonth(d.getUTCMonth() + dir);
+      d.setUTCDate(1);
+      d.setUTCMonth(d.getUTCMonth() + dir * (view === 'year' ? 12 : view === 'quarter' ? 3 : 1));
       st.patch({ calDate: iso(d) });
     } else {
       st.patch({ calDate: addD(cd, dir * (view === 'day' ? 1 : view === 'agenda' ? 14 : 7)) });
@@ -105,7 +111,7 @@ export function CalendarPage() {
 
   const selected = st.calSel ? active.find((x) => x.id === st.calSel) : undefined;
   const clashes = conflictPairs(active).filter(([a, b]) => a.date >= st.today || b.date >= st.today);
-  const show = (v: CalEvent) => st.patch({ calSel: v.id, calDate: v.date, calView: view === 'month' || view === 'agenda' ? 'week' : view });
+  const show = (v: CalEvent) => st.patch({ calSel: v.id, calDate: v.date, calView: view === 'week' || view === 'day' ? view : 'week' });
   const availText = S.whDays.slice().sort().map((d) => DN[d]).join(', ') + ' · ' + fmtT(ws + off) + ' to ' + fmtT(we + off) + ' ' + S.tz;
 
   return (
@@ -159,6 +165,8 @@ export function CalendarPage() {
       <div className="calbody">
         <div className="calmain">
           {(view === 'week' || view === 'day') && <WeekGrid days={days} active={active} shown={shown} />}
+          {view === 'year' && <YearGrid shown={shown} />}
+          {view === 'quarter' && <QuarterList shown={shown} />}
           {view === 'month' && <MonthGrid shown={shown} />}
           {view === 'agenda' && <Agenda active={active} shown={shown} />}
         </div>
@@ -343,13 +351,97 @@ function MonthGrid({ shown }: { shown: CalEvent[] }) {
         return (
           <button key={dt} type="button" className={cx('mc', o.getUTCMonth() !== month && 'dim')} onClick={() => st.patch({ calDate: dt, calView: 'day' })} aria-label={lab(dt) + (es.length ? ', ' + es.length + ' events' : '')}>
             <span className={cx('dnum', dt === st.today && 'today')}>{o.getUTCDate()}</span>
-            {es.slice(0, 3).map((v) => (
+            {es.map((v) => (
               <span key={v.id} className={cx('mev', STG[v.stage].cls, v.date < st.today && 'past')} style={accent(acctOf(st.accts, v))}>
                 {fmtT(v.start + off).replace(':00', '')} {v.co}
               </span>
             ))}
-            {es.length > 3 && <span className="mut">+{es.length - 3} more</span>}
           </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** First day of each month in the year or quarter that `date` falls in. */
+function monthsOf(date: string, n: 3 | 12): string[] {
+  const d = dObj(date);
+  const m = n === 12 ? 0 : Math.floor(d.getUTCMonth() / 3) * 3;
+  return range(n).map((i) => iso(new Date(Date.UTC(d.getUTCFullYear(), m + i, 1))));
+}
+
+/** Twelve small months; days with meetings are tinted by how many. */
+function YearGrid({ shown }: { shown: CalEvent[] }) {
+  const st = useStore();
+  const perDay = new Map<string, number>();
+  for (const v of shown) perDay.set(v.date, (perDay.get(v.date) || 0) + 1);
+  return (
+    <div className="yr">
+      {monthsOf(st.calDate, 12).map((m1) => {
+        const month = dObj(m1).getUTCMonth();
+        const start = mondayOf(m1);
+        const total = shown.filter((v) => v.date.slice(0, 7) === m1.slice(0, 7)).length;
+        return (
+          <div className="ym" key={m1}>
+            <button type="button" className="ymh" onClick={() => st.patch({ calDate: m1, calView: 'month' })}>
+              <b>{MFULL[month]}</b>
+              <span className="mut">{total ? total + ' event' + (total === 1 ? '' : 's') : 'No events'}</span>
+            </button>
+            <div className="ymg">
+              {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((t, i) => (
+                <span key={i} className="ymd mut">
+                  {t}
+                </span>
+              ))}
+              {range(42).map((i) => {
+                const dt = addD(start, i);
+                if (dObj(dt).getUTCMonth() !== month) return <span key={dt} />;
+                const n = perDay.get(dt) || 0;
+                return (
+                  <button
+                    key={dt}
+                    type="button"
+                    className={cx('ymd', n > 0 && 'has', n > 1 && 'two', n > 2 && 'many', dt === st.today && 'today')}
+                    onClick={() => st.patch({ calDate: dt, calView: 'day' })}
+                    title={lab(dt) + (n ? ': ' + n + ' event' + (n === 1 ? '' : 's') : '')}
+                    aria-label={lab(dt) + (n ? ', ' + n + ' events' : '')}
+                  >
+                    {dObj(dt).getUTCDate()}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** The quarter's three months side by side, every event listed by day. */
+function QuarterList({ shown }: { shown: CalEvent[] }) {
+  const st = useStore();
+  const off = tzOffset(st.S.tz);
+  return (
+    <div className="qtr">
+      {monthsOf(st.calDate, 3).map((m1) => {
+        const es = shown.filter((v) => v.date.slice(0, 7) === m1.slice(0, 7)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+        return (
+          <section className="qm" key={m1}>
+            <button type="button" className="ymh" onClick={() => st.patch({ calDate: m1, calView: 'month' })}>
+              <b>{MFULL[dObj(m1).getUTCMonth()]}</b>
+              <span className="mut">{es.length ? es.length + ' event' + (es.length === 1 ? '' : 's') : 'No events'}</span>
+            </button>
+            {es.map((v, i) => (
+              <button key={v.id} type="button" className={cx('qe', v.date < st.today && 'past')} onClick={() => st.patch({ calSel: v.id, calDate: v.date, calView: 'week' })}>
+                <span className="qd">{i === 0 || es[i - 1].date !== v.date ? lab(v.date) : ''}</span>
+                <span className="tm">{fmtT(v.start + off)}</span>
+                <span className={cx('mev', STG[v.stage].cls)} style={{ flex: 1, minWidth: 0, ...accent(acctOf(st.accts, v)) }} title={v.co + (v.role ? ' · ' + v.role : '')}>
+                  {v.co}
+                </span>
+              </button>
+            ))}
+          </section>
         );
       })}
     </div>

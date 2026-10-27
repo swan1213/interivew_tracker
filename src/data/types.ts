@@ -4,7 +4,7 @@ export type Cat =
   | 'action' | 'invite' | 'avail' | 'confirmed' | 'applied'
   | 'status' | 'rejected' | 'auto' | 'offer' | 'review' | 'sent' | 'other';
 export type Pri = 'critical' | 'high' | 'normal' | 'low';
-export type StageKey = 'applied' | 'review' | 'first' | 'next' | 'offer' | 'hired' | 'closed';
+export type StageKey = 'applied' | 'review' | 'first' | 'tech' | 'next' | 'offer' | 'hired' | 'closed';
 export type EvStage = 'screen' | 'tech' | 'mgr' | 'final' | 'offer' | 'busy';
 export type IvStatus = 'none' | 'awaiting' | 'confirmed';
 export type EmailMode = 'avail' | 'confirm' | 'resched' | 'assess';
@@ -25,7 +25,7 @@ export interface Member {
 export type InboxView =
   | 'inbox' | 'action' | 'invite' | 'avail' | 'status'
   | 'applied' | 'offers' | 'rejected' | 'auto' | 'sent' | 'other';
-export type CalView = 'month' | 'week' | 'day' | 'agenda';
+export type CalView = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'agenda';
 export type SortKey = 'newest' | 'oldest' | 'priority' | 'deadline';
 export type CompMode = 'reply' | 'replyall' | 'forward';
 export type ThemePref = 'light' | 'dark' | 'auto';

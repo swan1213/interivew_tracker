@@ -66,6 +66,7 @@ export const STAGES: { k: StageKey; l: string; c: string }[] = [
   { k: 'applied', l: 'Applied', c: '#6B7390' },
   { k: 'review', l: 'Under Review', c: '#0B7AB0' },
   { k: 'first', l: 'First Interview', c: '#8B3FD6' },
+  { k: 'tech', l: 'Technical Interview', c: '#C0540C' },
   { k: 'next', l: 'Next Step Interview', c: '#4F46E5' },
   { k: 'offer', l: 'Offer Received', c: '#B7791F' },
   { k: 'hired', l: 'Hired', c: '#15803D' },

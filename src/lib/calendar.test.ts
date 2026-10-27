@@ -84,11 +84,26 @@ describe('tracker stages from calendar meetings', () => {
     const evs = [meet('1', 'Interview with Acme', '2026-10-21'), meet('2', 'Interview with Acme', '2026-10-28')];
     expect(stages([app('Acme', { stage: 'closed' })], evs)).toEqual({ Acme: 'closed' });
     expect(stages([app('Acme', { stage: 'review', locked: true })], evs)).toEqual({ Acme: 'review' });
-    expect(stages([app('Old', { stage: 'tech' as Application['stage'], locked: true }), app('Gone', { stage: 'sched' as Application['stage'] })], evs)).toEqual({ Old: 'next', Gone: 'review' });
+    expect(stages([app('Old', { stage: 'final' as Application['stage'], locked: true }), app('Gone', { stage: 'sched' as Application['stage'] })], evs)).toEqual({ Old: 'next', Gone: 'review' });
   });
 
   it('shows the upcoming meeting as the next step', () => {
     const [a] = meetingStages([app('Acme')], [meet('1', 'Interview with Acme', '2026-10-28')], [], '2026-10-27');
     expect(a.next).toMatch(/Oct 28, 1:00 PM ET/);
+  });
+});
+
+describe('technical interviews', () => {
+  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
+  const meet = (id: string, co: string, date: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'recruiter@x.example' });
+  const stageOf = (evs: CalEvent[]) => meetingStages([app('Fluidstack')], evs, [], '2026-10-27')[0].stage;
+
+  it('goes to Technical Interview when the latest meeting is a technical round, booked or held', () => {
+    expect(stageOf([meet('1', 'Recruiter screen with Fluidstack', '2026-09-20'), meet('2', 'Technical Interview with Fluidstack', '2026-11-02')])).toBe('tech');
+    expect(stageOf([meet('1', 'Fluidstack coding round', '2026-09-20')])).toBe('tech');
+  });
+
+  it('moves on to Next Step after the technical round', () => {
+    expect(stageOf([meet('1', 'Technical Interview with Fluidstack', '2026-09-25'), meet('2', 'Hiring Manager Interview with Fluidstack', '2026-09-29')])).toBe('next');
   });
 });

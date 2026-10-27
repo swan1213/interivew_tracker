@@ -110,16 +110,20 @@ export function layoutLanes(evs: CalEvent[], minDur = 0): Map<string, Lane> {
   return out;
 }
 
-/** Stage keys from before First / Next Step Interview replaced the five interview columns. */
-const OLD_STAGE: Record<string, StageKey> = { screen: 'first', sched: 'first', confirmed: 'first', tech: 'next', final: 'next' };
+/** Stage keys from before First / Technical / Next Step Interview replaced the five interview columns. */
+const OLD_STAGE: Record<string, StageKey> = { screen: 'first', sched: 'first', confirmed: 'first', final: 'next' };
+
+/** A meeting title for a technical round. */
+export const isTechnical = (title: string): boolean => /\b(technical|tech screen|coding|system design|pair programming|take[- ]home|assessment)\b/i.test(title);
 
 /** Stages the calendar never overrides: the outcome is known. */
 const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
 
 /**
- * Tracker stages from the calendar: a company with one interview meeting on your calendar is at
- * First Interview, with two or more at Next Step Interview. Cards you moved yourself, and offers,
- * hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one.
+ * Tracker stages from the calendar: when the company's latest meeting (past or booked) is a technical
+ * round it is at Technical Interview; otherwise one meeting is First Interview, two or more Next Step
+ * Interview. Cards you moved yourself, and offers, hires and rejections, keep their stage. `next` shows
+ * the upcoming meeting when there is one.
  */
 export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
@@ -127,8 +131,8 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
     const stage = OLD_STAGE[a.stage] || a.stage;
     if (a.locked || SETTLED.includes(stage)) return stage === a.stage ? a : { ...a, stage };
     const mine = meetings.filter((v) => (!!a.emailId && v.emailId === a.emailId) || meetingMentions(v, a.co));
-    if (!mine.length) return stage === 'first' || stage === 'next' ? { ...a, stage: 'review' } : a;
+    if (!mine.length) return stage === 'first' || stage === 'tech' || stage === 'next' ? { ...a, stage: 'review' } : a;
     const up = mine.find((v) => v.date >= today);
-    return { ...a, stage: mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+    return { ...a, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
   });
 }
