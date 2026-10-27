@@ -4,7 +4,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email } from '@/data/types';
-import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName } from '@/lib/mail';
+import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -361,7 +361,7 @@ function Thread({ e, acctAddr }: { e: Email; acctAddr: string }) {
                     to {m.mine ? other : <span title={acctAddr}>me ({acctAddr})</span>}
                   </div>
                   <div className="tbody">
-                    <Linked text={m.body} />
+                    <Linked text={tidyBody(m.body)} />
                   </div>
                   {!!m.atts?.length && (
                     <div className="tatt">

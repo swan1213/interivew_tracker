@@ -165,6 +165,17 @@ export function filterEmails(all: Email[], f: InboxFilters, apps: Application[])
   return sortEmails(list, f.sortKey, f.today);
 }
 
+/** A message body for display: zero-width padding dropped, blank runs collapsed to one empty line. */
+export function tidyBody(s: string): string {
+  return s
+    .replace(/[​-‏͏⁠﻿­]/g, '')
+    .replace(/ /g, ' ')
+    .replace(/[ \t]{4,}/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 /** Second and third non-empty lines of the body, trimmed to a preview. */
 export function previewOf(e: Email): string {
   return e.body.split('\n').filter((x) => x.trim()).slice(1, 3).join(' ').slice(0, 110);

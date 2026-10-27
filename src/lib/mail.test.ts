@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
 import type { Email } from '@/data/types';
 import type { InboxFilters } from './mail';
-import { appliedDay, effCat, filterEmails, inView, matchSaved, participants, previewOf, rangeDays, receivedDay, senderName, sortEmails, type RangeFilter } from './mail';
+import { appliedDay, effCat, tidyBody, filterEmails, inView, matchSaved, participants, previewOf, rangeDays, receivedDay, senderName, sortEmails, type RangeFilter } from './mail';
 
 const base: InboxFilters = {
   view: 'inbox', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', today: '2026-10-26', nowHour: 9.2, ivFilter: 'all',
@@ -10,6 +10,13 @@ const base: InboxFilters = {
 };
 const data = buildDemoData();
 const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+
+describe('message body display', () => {
+  it('drops zero-width padding and collapses blank runs', () => {
+    const raw = 'Message from Spark Hire\n\n ‌͏ \n\n\n   \n \n\nHi Joshua,\n\n\n\nThanks.\n\n\n';
+    expect(tidyBody(raw)).toBe('Message from Spark Hire\n\nHi Joshua,\n\nThanks.');
+  });
+});
 
 describe('applied day', () => {
   it('reads "Oct 8" as this year, or last year when that is still ahead', () => {

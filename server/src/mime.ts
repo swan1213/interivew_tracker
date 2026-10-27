@@ -40,8 +40,22 @@ export function decodeEntities(s: string): string {
  */
 export function cleanBody(text: string): string {
   if (/<(br|p|div|span|table|td|li|a)\b[^>]*>/i.test(text)) return stripHtml(text);
-  if (!/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return text;
-  return decodeEntities(text).replace(/\u00a0/g, ' ');
+  if (!/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return tidyText(text);
+  return tidyText(decodeEntities(text));
+}
+
+/**
+ * Blank space left by image-only HTML (preheader padding of &nbsp; and zero-width characters,
+ * layout tables) collapsed: no line of only spaces, at most one empty line in a row.
+ */
+export function tidyText(s: string): string {
+  return s
+    .replace(/[\u200b-\u200f\u034f\u2060\ufeff\u00ad]/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]{4,}/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 /** Very small HTML → text conversion good enough for recruiter mail. */
@@ -49,8 +63,7 @@ export function stripHtml(html: string): string {
   let s = html.replace(/<(script|style)[\s\S]*?<\/\1>/gi, '');
   s = s.replace(/<br\s*\/?>/gi, '\n').replace(/<(p|div|tr|h[1-6])\b[^>]*>/gi, '\n').replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n').replace(/<li[^>]*>/gi, '• ');
   s = s.replace(/<[^>]+>/g, '');
-  s = decodeEntities(s);
-  return s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return tidyText(decodeEntities(s));
 }
 
 export function humanSize(bytes: number | undefined): string {
