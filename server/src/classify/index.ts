@@ -1,7 +1,7 @@
 import { cfg } from '../config';
 import type { Classification, ParsedMessage } from '../types';
 import { classifyWithClaude } from './claude';
-import { classifyHeuristic, firstSentences, isJobRelated } from './heuristic';
+import { classifyHeuristic, firstSentences, isJobAlert, isJobRelated } from './heuristic';
 
 /** A conversation you started that has no reply yet: listed under Sent, nothing to do. */
 export function classifySent(m: ParsedMessage): Classification {
@@ -30,7 +30,8 @@ export async function classifyMessage(head: ParsedMessage, thread: ParsedMessage
   const rules = classifyHeuristic(head, now);
   // Phrases like "please confirm" or "when are you free" also appear in ordinary mail; only job mail gets job categories.
   if (!rules.jobRelated && !thread.some((m) => isJobRelated(m))) return classifyOther(rules);
-  if (!allowModel || !cfg.anthropicKey || cfg.mock) return noReplyScheduling(rules);
+  // Job alerts are settled by the rules: the model would read the listings as requests.
+  if (!allowModel || !cfg.anthropicKey || cfg.mock || isJobAlert(head)) return noReplyScheduling(rules);
   try {
     return noReplyScheduling(await classifyWithClaude(head, thread, rules, now));
   } catch (e) {
@@ -59,6 +60,6 @@ export function noReplyScheduling(c: Classification): Classification {
 
 /** Whether classifyMessage would ask the model about this thread (job mail, with a key configured). */
 export function modelWanted(head: ParsedMessage, thread: ParsedMessage[]): boolean {
-  if (!cfg.anthropicKey || cfg.mock) return false;
+  if (!cfg.anthropicKey || cfg.mock || isJobAlert(head)) return false;
   return isJobRelated(head) || thread.some((m) => isJobRelated(m));
 }

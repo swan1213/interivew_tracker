@@ -10,11 +10,25 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 6;
+export const RULES_VERSION = 7;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
 const NEWSLETTER_BODY = /\bview (this|the) (post|email|newsletter|issue) (on the web|online|in (your )?browser)\b|\bread (it )?online\b|\bmanage (your )?(subscription|email preferences)\b/i;
+
+/**
+ * Job-alert mailing lists ("New jobs have been posted", "Apply to 36,427 jobs now"). Their listings
+ * are full of phrases like "available days" or "next steps" that read like a recruiter's request.
+ */
+const JOB_ALERT_FROM = /^(job-?)?alerts?@|@(job-?)?alerts?\.|^jobs?-?(no-?reply|alerts?|notifications?)@|^job-?alerts?[\w.+-]*@/i;
+const JOB_ALERT_BODY = /\bjob alerts?\b|\bemail alerts? (that|which) match\b|\bnew [\w -]{0,30}\bjobs?\b[^.\n]{0,40}\bhave been posted\b|\bapply to [\d,]+ (new )?jobs\b|\bjobs? (that )?match(es|ing)? your (search|profile|preferences|alert)\b|\b(recommended|suggested) jobs for you\b|\bjobs you (may|might) (like|be interested in)\b|\bnew jobs? for you\b/i;
+
+/** A job-alert digest: from an alerts address, or alert wording in bulk / no-reply mail. */
+export function isJobAlert(p: Pick<ParsedMessage, 'fromAddr' | 'subject' | 'bodyText'>): boolean {
+  if (JOB_ALERT_FROM.test(p.fromAddr)) return true;
+  const text = p.subject + '\n' + p.bodyText.slice(0, 8000);
+  return JOB_ALERT_BODY.test(text) && (/\bunsubscribe\b/i.test(text) || NOREPLY.test(p.fromAddr));
+}
 
 /** Subjects of application receipts ("Thanks for applying to X", "Application received"). */
 const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your interest|submitting)|application (received|submitted|confirmation|complete)|we('ve| have) received your application|your application (to|for|at|with|has been|was))\b/i;
@@ -217,7 +231,8 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   // Mailing-list mail (an unsubscribe footer) never carries a real offer.
   const bulk = /\bunsubscribe\b/i.test(body);
   const newsletter = NEWSLETTER_FROM.test(p.fromAddr) || NEWSLETTER_BODY.test(body);
-  const offerHit = !bulk && !newsletter && (strongOffer || (looseOffer && !appliedHit && !statusHit));
+  const jobAlert = isJobAlert(p);
+  const offerHit = !bulk && !newsletter && !jobAlert && (strongOffer || (looseOffer && !appliedHit && !statusHit));
 
   let cat: Cat;
   let sec: Cat | '' = '';
@@ -225,6 +240,8 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   let mode: EmailMode | undefined;
   // A newsletter post about interviews is reading material, not a request.
   if (newsletter) { cat = 'auto'; conf = 90; }
+  // A job alert lists openings; nobody there is asking you anything.
+  else if (jobAlert) { cat = 'auto'; conf = 92; }
   else if (offerHit) { cat = 'offer'; conf = 92; }
   else if (rejectHit && !confirmedHit) { cat = 'rejected'; conf = 88; }
   // An application receipt often carries a copy of the form or résumé ("available from...", "when would you

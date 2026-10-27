@@ -1,5 +1,5 @@
 import { classifyMessage, classifySent, modelWanted } from './classify';
-import { isJobRelated, RULES_VERSION } from './classify/heuristic';
+import { isJobAlert, isJobRelated, RULES_VERSION } from './classify/heuristic';
 import { cfg } from './config';
 import { GmailError, gmailFor, isRateLimitError, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
@@ -171,8 +171,17 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   return { newMessages: added, removed, pending: waiting.length - fetched, refining, throttled: !!stopped };
 }
 
-/** Classified by an older version of the rules (the model's results are kept). */
-const staleRules = (t: StoredThread): boolean => t.classification?.classifier === 'rules' && t.classification.rulesVersion !== RULES_VERSION;
+/**
+ * Classified by an older version of the rules (the model's results are kept), or a job alert
+ * an earlier classification took for a request.
+ */
+const staleRules = (t: StoredThread): boolean => {
+  const c = t.classification;
+  if (!c) return false;
+  if (c.classifier === 'rules' && c.rulesVersion !== RULES_VERSION) return true;
+  const head = t.messages.find((m) => m.id === t.classifiedId);
+  return !!head && c.cat !== 'auto' && c.cat !== 'other' && isJobAlert(head);
+};
 
 /** Unlisted messages checked one by one per sync, at most. */
 const VERIFY_MAX = 50;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { demoAsGmail, MOCK_USER } from '../google/mock';
 import { parseMessage } from '../mime';
 import type { ParsedMessage } from '../types';
-import { classifyHeuristic, extractCompany, isJobRelated } from './heuristic';
+import { classifyHeuristic, extractCompany, isJobAlert, isJobRelated } from './heuristic';
 
 // Anchor "now" to the demo's own clock so dates line up with the fixture text.
 const NOW = new Date('2026-10-26T09:12:00');
@@ -239,6 +239,31 @@ describe('newsletters and mailing-list mail', () => {
   it('mail with an unsubscribe footer is never an offer', () => {
     const c = classifyHeuristic(nl('news@careers.example', 'Career tips', 'How I got my job offer in 30 days.\nUnsubscribe from these emails.'), NOW);
     expect(c.cat).not.toBe('offer');
+  });
+});
+
+describe('job alerts', () => {
+  const alert = (fromAddr: string, subject: string, bodyText: string): ParsedMessage => ({
+    id: 'j', threadId: 'tj', fromName: 'Virtual Vocations', fromAddr, to: 'me@gmail.com', subject, date: '2026-10-27T16:06:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+  const body =
+    'Hello Yukimaru,\n\nNew telecommute jobs for Tuesday have been posted at virtualvocations.com.\nApply to 36,427 jobs now!\n\n' +
+    'Be one of the first to apply and be considered for these positions.\n\n[Open to you] Building Systems Engineer\n' +
+    "Interview available in the next few days. Next steps: let us know which times work.\n\nEmail alerts that match 'Engineering'\nAutomation QA Engineer";
+
+  it('a job-alert digest is automated mail, whatever its listings say', () => {
+    const c = classifyHeuristic(alert('jobalerts@alerts.virtualvocations.com', 'Apply for Automation QA Engineer', body), NOW);
+    expect(c.cat).toBe('auto');
+    expect(c.mode).toBeUndefined();
+    expect(c.needs).toBe(false);
+  });
+
+  it("alert wording counts in bulk mail, not in a recruiter's own message", () => {
+    expect(isJobAlert(alert('digest@jobs.example', 'New jobs for you', 'New jobs for you this week.\nUnsubscribe'))).toBe(true);
+    const recruiter = alert('dana@acme.example', 'Interview at Acme', 'I found your profile through a job alert. Could you share a few times that work for a call next week?');
+    expect(isJobAlert(recruiter)).toBe(false);
+    expect(classifyHeuristic(recruiter, NOW).cat).toBe('avail');
   });
 });
 
