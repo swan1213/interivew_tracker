@@ -3,7 +3,7 @@ import { getAcct, trackedApps } from '@/store/selectors';
 import { STAGES } from '@/data/constants';
 import type { Application, StageKey } from '@/data/types';
 import { appliedDay } from '@/lib/mail';
-import { mondayOf } from '@/lib/time';
+import { addD, iso, mondayOf } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, CoBadge, Fact, PriBadge, Seg } from '@/ui/bits';
@@ -16,19 +16,24 @@ const RANGES: { k: Range; l: string }[] = [
   { k: 'year', l: 'Year' },
 ];
 
-/** First day of a range ending today: today, this week (from Monday), this month or this year. */
-const rangeFrom = (k: Range, today: string): string =>
-  k === 'today' ? today : k === 'week' ? mondayOf(today) : k === 'month' ? today.slice(0, 8) + '01' : k === 'year' ? today.slice(0, 5) + '01-01' : '';
+/** First and last day of today, this week (Monday to Sunday), this month or this year; empty for any time. */
+function period(k: Range, today: string): [string, string] {
+  if (k === 'today') return [today, today];
+  if (k === 'week') return [mondayOf(today), addD(mondayOf(today), 6)];
+  if (k === 'month') return [today.slice(0, 8) + '01', addD(iso(new Date(Date.UTC(+today.slice(0, 4), +today.slice(5, 7), 1))), -1)];
+  if (k === 'year') return [today.slice(0, 5) + '01-01', today.slice(0, 5) + '12-31'];
+  return ['', ''];
+}
 
 export function Tracker() {
   const st = useStore();
-  const from = rangeFrom(st.trRange, st.today);
+  const [from, to] = period(st.trRange, st.today);
   const all = trackedApps(st);
+  const within = (d: string | null | undefined) => !!d && d >= from && d <= to;
+  // In the period: applied then, or a meeting with the company falls in it.
   const apps = all.filter((a) => {
     if (st.acctFilter !== 'all' && a.acct !== st.acctFilter) return false;
-    if (!from) return true;
-    const d = appliedDay(a.applied, st.today);
-    return !!d && d >= from && d <= st.today;
+    return !from || within(appliedDay(a.applied, st.today)) || (a.meetings || []).some(within);
   });
   const stages = st.trStage === 'all' ? STAGES : STAGES.filter((s) => s.k === st.trStage);
   const shown = st.trStage === 'all' ? apps.length : apps.filter((a) => a.stage === st.trStage).length;

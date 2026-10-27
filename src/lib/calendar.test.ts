@@ -107,3 +107,21 @@ describe('technical interviews', () => {
     expect(stageOf([meet('1', 'Technical Interview with Fluidstack', '2026-09-25'), meet('2', 'Hiring Manager Interview with Fluidstack', '2026-09-29')])).toBe('next');
   });
 });
+
+describe('which company a meeting belongs to', () => {
+  const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'applied', applied: 'Oct 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
+  const meet = (id: string, co: string, organizer?: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date: '2026-10-28', organizer });
+  const owner = (apps: string[], v: CalEvent) => meetingStages(apps.map(app), [v], [], '2026-10-27').filter((a) => a.meetings).map((a) => a.co);
+
+  it('goes to the one company it names, not to names made of generic words', () => {
+    expect(owner(['Inc', 'Rebuy'], meet('1', 'Interview with Rebuy, Inc.', 'Interview Calendar'))).toEqual(['Rebuy']);
+    expect(owner(['Greenhouse', 'Schedule', 'StreamNative'], meet('2', 'Interview with StreamNative', 'StreamNative Interviewer Calendar'))).toEqual(['StreamNative']);
+    expect(owner(['Chat', 'Hiring', 'Engine'], meet('3', 'Hiring Manager Chat- Cloud Engineer- Joshua Shin', 'Boucher, Louisa'))).toEqual([]);
+  });
+
+  it('uses the organizer domain, but not the person in front of the @', () => {
+    expect(owner(['Devin', 'Luma'], meet('4', 'Luma | Interview - Joshua Shin', 'devin@lumalabs.ai'))).toEqual(['Luma']);
+    expect(owner(['Artemis'], meet('5', 'Artemis Interview (Virtual)', 'anthony@artemissecurity.com'))).toEqual(['Artemis']);
+    expect(owner(['Alt'], meet('6', 'Joshua Shin and Kate', 'kate@saltlabs.example'))).toEqual([]);
+  });
+});

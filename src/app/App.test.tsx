@@ -228,6 +228,18 @@ describe('App', () => {
     expect(container.querySelectorAll('.ev.past').length).toBeGreaterThan(0);
   });
 
+  it('tracker opens on today and counts meetings in the period', () => {
+    reset({ page: 'track' });
+    mount();
+    expect(useStore.getState().trRange).toBe('today');
+    expect(container.querySelector('[aria-label="Applied in"] .on')?.textContent).toBe('Today');
+    click('[aria-label="Applied in"] button:nth-child(2)'); // Week: Oct 26 – Nov 1
+    // Orbit Systems applied in September, but its panel is on Nov 3: next week, not this one.
+    expect(container.textContent).not.toContain('Orbit Systems');
+    // Atlassian applied in September and meets on Oct 28.
+    expect(container.textContent).toContain('Atlassian');
+  });
+
   it('tracker filters by account, applied date and status', () => {
     reset({ page: 'track', trRange: '', trStage: 'all' });
     mount();

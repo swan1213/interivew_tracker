@@ -139,6 +139,8 @@ export interface Application {
   ai: AiSuggestion | null;
   timeline: TimelineItem[];
   remind?: boolean;
+  /** ISO days of this company's meetings on the calendar (filled in by the tracker, not stored). */
+  meetings?: string[];
 }
 
 export interface CalEvent {

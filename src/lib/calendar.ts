@@ -30,21 +30,45 @@ export function isInterviewMeeting(v: CalEvent, own: string[] = []): boolean {
   return !!v.organizer || (v.attendees || []).some((g) => !mine.has(g.toLowerCase()));
 }
 
-/** Words of a company name long enough to find in a meeting title ("Acme" in "Interview with Acme, Inc."). */
+/**
+ * Words that say nothing about which company a meeting is with. A company name made only of these
+ * (mail parsing sometimes yields "Chat", "Inc" or "Greenhouse") never matches a meeting.
+ */
+const GENERIC = new Set(
+  ('inc llc ltd corp gmbh the and with for chat call meeting interview interviews hiring team talent recruiting recruiter careers jobs job ' +
+    'app apps schedule scheduling calendar greenhouse lever ashby workday calendly gem zoom teams google gmail outlook video phone screen ' +
+    'intro sync engineer engineering software manager senior candidate virtual round new invite people global find').split(' '),
+);
+
+/** Words of a company name to look for in a meeting ("rebuy" for "Rebuy, Inc."). */
 const coWords = (co: string): string[] =>
   co
     .toLowerCase()
-    .replace(/[,.]?\s+(inc|llc|ltd|corp|co|gmbh)\.?$/i, '')
     .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 3);
+    .filter((w) => w.length >= 3 && !GENERIC.has(w));
 
-/** The calendar meeting text mentions the company (title, organizer or guest addresses). */
-export function meetingMentions(v: CalEvent, company: string): boolean {
+const wordsOf = (s: string): string => ' ' + s.toLowerCase().replace(/[^a-z0-9]+/g, ' ') + ' ';
+
+/**
+ * How well a meeting points at a company, 0 when it doesn't: every word of the name as a whole word in
+ * the title or the organizer's name, or inside an organizer or guest email domain ("artemissecurity.com"
+ * for Artemis). A domain match counts most; longer names beat shorter ones.
+ */
+export function meetingScore(v: CalEvent, company: string): number {
   const words = coWords(company);
-  if (!words.length) return false;
-  const text = [v.co, v.organizer || '', ...(v.attendees || [])].join(' ').toLowerCase();
-  return words.every((w) => text.includes(w));
+  if (!words.length) return 0;
+  const people = [v.organizer || '', ...(v.attendees || [])];
+  const title = wordsOf(v.co + ' ' + people.filter((p) => !p.includes('@')).join(' '));
+  const domains = people.map((p) => p.split('@')[1] || '').join(' ').toLowerCase();
+  const inTitle = words.every((w) => title.includes(' ' + w + ' '));
+  // Inside a domain only longer words count: "alt" turns up in too many unrelated domains.
+  const inDomain = !!domains && words.every((w) => w.length >= 4 && domains.includes(w));
+  if (!inTitle && !inDomain) return 0;
+  return (inDomain ? 2 : 0) + (inTitle ? 1 : 0) + words.join('').length / 100;
 }
+
+/** The calendar meeting is with the company (see meetingScore). */
+export const meetingMentions = (v: CalEvent, company: string): boolean => meetingScore(v, company) > 0;
 
 /** Every other active event that overlaps `v` where at least one side is an interview, earliest first. */
 export function conflictsOf(v: CalEvent, active: CalEvent[]): CalEvent[] {
@@ -122,17 +146,29 @@ const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
 /**
  * Tracker stages from the calendar: when the company's latest meeting (past or booked) is a technical
  * round it is at Technical Interview; otherwise one meeting is First Interview, two or more Next Step
- * Interview. Cards you moved yourself, and offers, hires and rejections, keep their stage. `next` shows
- * the upcoming meeting when there is one.
+ * Interview. Each meeting belongs to the one company it matches best. Cards you moved yourself, and
+ * offers, hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one,
+ * and `meetings` lists the meeting days.
  */
 export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+  const byApp = new Map<string, CalEvent[]>();
+  for (const v of meetings) {
+    let best: Application | undefined;
+    let top = 0;
+    for (const a of apps) {
+      const s = a.emailId && v.emailId === a.emailId ? 10 : meetingScore(v, a.co);
+      if (s > top) [best, top] = [a, s];
+    }
+    if (best) (byApp.get(best.id) || byApp.set(best.id, []).get(best.id)!).push(v);
+  }
   return apps.map((a) => {
     const stage = OLD_STAGE[a.stage] || a.stage;
-    if (a.locked || SETTLED.includes(stage)) return stage === a.stage ? a : { ...a, stage };
-    const mine = meetings.filter((v) => (!!a.emailId && v.emailId === a.emailId) || meetingMentions(v, a.co));
+    const mine = byApp.get(a.id) || [];
+    const dates = mine.length ? { meetings: mine.map((v) => v.date) } : {};
+    if (a.locked || SETTLED.includes(stage)) return stage === a.stage && !mine.length ? a : { ...a, stage, ...dates };
     if (!mine.length) return stage === 'first' || stage === 'tech' || stage === 'next' ? { ...a, stage: 'review' } : a;
     const up = mine.find((v) => v.date >= today);
-    return { ...a, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+    return { ...a, ...dates, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : mine.length > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
   });
 }
