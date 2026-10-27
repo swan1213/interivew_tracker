@@ -1,5 +1,6 @@
 import type { Account, Application, CalEvent, Email, InboxView, ThemePref } from '@/data/types';
 import { meetingStages } from '@/lib/calendar';
+import { addD } from '@/lib/time';
 import { inView, needsAction } from '@/lib/mail';
 
 export const FALLBACK_ACCT: Account = {
@@ -30,12 +31,15 @@ export function eventAccount(accts: Account[], emails: Email[], v: CalEvent): Ac
   return id ? accts.find((a) => a.id === id) : undefined;
 }
 
-let tracked: { apps: Application[]; events: CalEvent[]; accts: Account[]; today: string; out: Application[] } | null = null;
+type TrackIn = { apps: Application[]; events: CalEvent[]; accts: Account[]; emails: Email[]; today: string };
+let tracked: (TrackIn & { out: Application[] }) | null = null;
 
 /** Applications with their stage taken from the calendar (see meetingStages), cached until the data changes. */
-export function trackedApps(s: { apps: Application[]; events: CalEvent[]; accts: Account[]; today: string }): Application[] {
-  if (!tracked || tracked.apps !== s.apps || tracked.events !== s.events || tracked.accts !== s.accts || tracked.today !== s.today) {
-    tracked = { apps: s.apps, events: s.events, accts: s.accts, today: s.today, out: meetingStages(s.apps, s.events, s.accts.map((a) => a.addr), s.today) };
+export function trackedApps(s: TrackIn): Application[] {
+  if (!tracked || tracked.apps !== s.apps || tracked.events !== s.events || tracked.accts !== s.accts || tracked.emails !== s.emails || tracked.today !== s.today) {
+    const ago = new Map(s.emails.map((e) => [e.id, e.ago]));
+    const mailDay = (id: string) => (ago.has(id) ? addD(s.today, -Math.floor(ago.get(id)! / 1440)) : undefined);
+    tracked = { apps: s.apps, events: s.events, accts: s.accts, emails: s.emails, today: s.today, out: meetingStages(s.apps, s.events, s.accts.map((a) => a.addr), s.today, mailDay) };
   }
   return tracked.out;
 }

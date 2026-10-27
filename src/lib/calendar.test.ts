@@ -84,7 +84,7 @@ describe('tracker stages from calendar meetings', () => {
     const evs = [meet('1', 'Interview with Acme', '2026-10-21'), meet('2', 'Interview with Acme', '2026-10-28')];
     expect(stages([app('Acme', { stage: 'closed' })], evs)).toEqual({ Acme: 'closed' });
     expect(stages([app('Acme', { stage: 'review', locked: true })], evs)).toEqual({ Acme: 'review' });
-    expect(stages([app('Old', { stage: 'final' as Application['stage'], locked: true }), app('Gone', { stage: 'sched' as Application['stage'] })], evs)).toEqual({ Old: 'next', Gone: 'review' });
+    expect(stages([app('Old', { stage: 'final' as Application['stage'], locked: true }), app('Gone', { stage: 'sched' as Application['stage'] })], evs)).toEqual({ Old: 'review', Gone: 'review' });
   });
 
   it('shows the upcoming meeting as the next step', () => {
@@ -167,5 +167,27 @@ describe('meetings that match no application', () => {
     expect(titleCompany('Smarsh | Final round interview - James Wagner').name).toBe('Smarsh');
     expect(titleCompany('Joshua Shin and Laura Mammen').name).toBe('Laura Mammen');
     expect(titleCompany('HTEC AI Compiler & Runtime – Joshua Shin').name).toBe('HTEC AI Compiler & Runtime');
+  });
+});
+
+describe('interview columns follow the calendar', () => {
+  const app = (co: string, more: Partial<Application> = {}): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: 'm-' + co, notes: '', locked: false, ai: null, timeline: [], ...more });
+  const meet = (id: string, co: string, date: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'x@y.example' });
+  const run = (apps: Application[], evs: CalEvent[], mail: Record<string, string> = {}) =>
+    Object.fromEntries(meetingStages(apps, evs, [], '2026-10-27', (id) => mail[id]).filter((a) => !a.fromCal).map((a) => [a.co, a.stage]));
+
+  it('takes a card you moved there out again when it has no meeting', () => {
+    // Chat and Devin were dragged to the old Interview Scheduling column; no meeting backs them.
+    expect(run([app('Chat', { stage: 'first', locked: true }), app('Devin', { stage: 'sched' as Application['stage'], locked: true })], [])).toEqual({ Chat: 'review', Devin: 'review' });
+  });
+
+  it('keeps your move between interview columns when there is a meeting', () => {
+    expect(run([app('Acme', { stage: 'next', locked: true })], [meet('1', 'Interview with Acme', '2026-10-20')])).toEqual({ Acme: 'next' });
+  });
+
+  it('reopens a rejection when a meeting comes after the latest email', () => {
+    const evs = [meet('1', 'RE: Cloud Engineer @ Mendix', '2026-10-20')];
+    expect(run([app('Mendix', { stage: 'closed' })], evs, { 'm-Mendix': '2026-09-30' })).toEqual({ Mendix: 'first' });
+    expect(run([app('Mendix', { stage: 'closed' })], evs, { 'm-Mendix': '2026-10-24' })).toEqual({ Mendix: 'closed' });
   });
 });

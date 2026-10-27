@@ -149,16 +149,21 @@ export const isTechnical = (title: string): boolean => /\b(technical|tech screen
 /** Stages the calendar never overrides: the outcome is known. */
 const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
 
+/** Columns filled from the calendar. */
+export const INTERVIEW: StageKey[] = ['first', 'tech', 'next'];
+
 /**
  * Tracker stages from the calendar: when the company's latest meeting (past or booked) is a technical
  * round it is at Technical Interview; otherwise meetings on one day are First Interview, on two or more
  * days Next Step Interview. Each meeting belongs to the one company it matches best, and only from a few
- * days before the company's first email. Cards you moved yourself, and
- * offers, hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one,
+ * days before the company's first email. Only companies with a meeting are in an interview column, even
+ * if you moved them there. Cards you moved elsewhere, and offers and hires, keep their stage; so does a
+ * rejection, unless a meeting came after the company's latest email (`mailDay` gives an email's ISO day).
+ * `next` shows the upcoming meeting when there is one,
  * `meetings` and `meetingIds` list the meetings. A meeting that matches no application still gets a
  * card of its own (`fromCal`), named after the organizer's company, so every interview is on the board.
  */
-export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
+export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string, mailDay?: (emailId: string) => string | undefined): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const byApp = new Map<string, CalEvent[]>();
   const loose = new Map<string, { name: string; evs: CalEvent[] }>();
@@ -181,13 +186,20 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
   }
   const staged = (a: Application, mine: CalEvent[]): Application => {
     const stage = OLD_STAGE[a.stage] || a.stage;
+    // A move into one of the old interview columns doesn't hold: those columns now follow the calendar.
+    const locked = a.locked && !OLD_STAGE[a.stage];
     const found = mine.length ? { meetings: mine.map((v) => v.date), meetingIds: mine.map((v) => v.id) } : {};
-    if (a.locked || SETTLED.includes(stage)) return stage === a.stage && !mine.length ? a : { ...a, stage, ...found };
-    if (!mine.length) return stage === 'first' || stage === 'tech' || stage === 'next' ? { ...a, stage: 'review' } : a;
+    const last = a.emailId && mailDay ? mailDay(a.emailId) : undefined;
+    // Rejected, then a meeting after the company's latest email: the newer meeting wins.
+    const reopened = !locked && stage === 'closed' && mine.length > 0 && !!last && mine[mine.length - 1].date > last;
+    if (!reopened && (SETTLED.includes(stage) || (locked && !INTERVIEW.includes(stage)))) return stage === a.stage && !mine.length ? a : { ...a, stage, ...found };
+    // Only companies with a meeting on the calendar are in an interview column, whoever put them there.
+    if (!mine.length) return INTERVIEW.includes(stage) ? { ...a, stage: 'review', locked: false } : a;
+    if (locked) return { ...a, ...found, stage };
     const up = mine.find((v) => v.date >= today);
     // Rounds are counted by day: two entries on one day are usually the same interview twice.
     const rounds = new Set(mine.map((v) => v.date)).size;
-    return { ...a, ...found, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+    return { ...a, ...found, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : '' };
   };
   const fromCal = [...loose].map(([key, { name, evs }]): Application => {
     const first = evs[0];

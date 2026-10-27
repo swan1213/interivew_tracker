@@ -2,6 +2,7 @@ import { drag, useStore, type AppState } from '@/store/store';
 import { getAcct, trackedApps } from '@/store/selectors';
 import { CAT, STAGES, STG } from '@/data/constants';
 import type { Application, CalEvent, StageKey } from '@/data/types';
+import { INTERVIEW } from '@/lib/calendar';
 import { appliedDay, effCat } from '@/lib/mail';
 import { addD, fmtT, iso, minutesLabel, mondayOf, rel } from '@/lib/time';
 import { cx } from '@/lib/util';
@@ -99,7 +100,7 @@ export function Tracker() {
                 const id = drag.app;
                 drag.app = '';
                 st.setOverCol('');
-                if (id) st.moveApp(id, s.k, true);
+                if (id) moveTo(st, all.find((x) => x.id === id), s.k);
               }}
             >
               <div className="kch">
@@ -200,6 +201,16 @@ function Card({ a }: { a: Application }) {
   );
 }
 
+/** A manual move. Interview columns follow the calendar: only a company with a meeting goes there. */
+function moveTo(st: AppState, a: Application | undefined, k: StageKey) {
+  if (!a || a.fromCal) return;
+  if (INTERVIEW.includes(k) && !a.meetings?.length) {
+    st.showToast(a.co + ' has no meeting on your calendar, so it stays out of the interview columns.');
+    return;
+  }
+  st.moveApp(a.id, k, true);
+}
+
 /** Meeting links in calendar events often lack a scheme. */
 const href = (link: string): string => (/^https?:\/\//i.test(link) ? link : 'https://' + link);
 
@@ -235,7 +246,7 @@ function AppDrawer({ a }: { a: Application }) {
             {a.fromCal ? (
               <b style={{ fontWeight: 600 }}>{STAGES.find((x) => x.k === a.stage)?.l}</b>
             ) : (
-              <select className="sel" style={{ width: '100%' }} value={a.stage} onChange={(e) => st.moveApp(a.id, e.target.value as StageKey, true)} aria-label="Update status">
+              <select className="sel" style={{ width: '100%' }} value={a.stage} onChange={(e) => moveTo(st, a, e.target.value as StageKey)} aria-label="Update status">
                 {STAGES.map((s) => (
                   <option key={s.k} value={s.k}>
                     {s.l}
