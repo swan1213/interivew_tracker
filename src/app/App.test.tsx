@@ -18,7 +18,7 @@ function reset(patch: Partial<AppState> = {}) {
     useStore.setState({
       ...d, selId: 'e1', page: 'dash', view: 'inbox', calView: 'week', calDate: '2026-10-26', compOpen: false, aiDraft: '', S: DEFAULT_SETTINGS,
       schedOpen: false, addCalOpen: false, sendOpen: false, cfOpen: false, addAcctOpen: false, notifOpen: false, acMenuOpen: false, appSel: '', calSel: '', toast: '',
-      themePref: 'light', q: '', acctFilter: 'all', members: seedMembers('Jordan Lee', true), meId: 'owner', userMenuOpen: false,
+      themePref: 'light', q: '', acctFilter: 'all', trRange: 'today', members: seedMembers('Jordan Lee', true), meId: 'owner', userMenuOpen: false,
       ...patch,
     });
   });
@@ -228,6 +228,18 @@ describe('App', () => {
     expect(container.querySelectorAll('.ev.past').length).toBeGreaterThan(0);
   });
 
+  it('tracker detail lists the interviews and emails', () => {
+    reset({ page: 'track', trRange: '', appSel: 'a7' });
+    mount();
+    const drawer = container.querySelector('[aria-label="Application detail"]')!;
+    expect(drawer.textContent).toContain('Interviews on your calendar (1)');
+    expect(drawer.textContent).toContain('Hiring manager interview');
+    expect(drawer.textContent).toMatch(/Emails \(\d+\)/);
+    expect(drawer.querySelectorAll('.dmail').length).toBeGreaterThan(0);
+    act(() => (drawer.querySelector('.dmail') as HTMLButtonElement).click());
+    expect(useStore.getState().page).toBe('inbox');
+  });
+
   it('tracker opens on today and counts meetings in the period', () => {
     reset({ page: 'track' });
     mount();
@@ -293,7 +305,7 @@ describe('App', () => {
   });
 
   it('tracker: accepting an AI suggestion moves the card', () => {
-    reset({ page: 'track' });
+    reset({ page: 'track', trRange: '' });
     mount();
     // The demo's suggestion: Meridian Labs, Applied → Under Review.
     const accept = Array.from(container.querySelectorAll('.kc .ai .btn.pri'))[0] as HTMLButtonElement;

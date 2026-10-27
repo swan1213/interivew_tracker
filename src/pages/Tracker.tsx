@@ -1,9 +1,9 @@
 import { drag, useStore, type AppState } from '@/store/store';
 import { getAcct, trackedApps } from '@/store/selectors';
-import { STAGES } from '@/data/constants';
-import type { Application, StageKey } from '@/data/types';
-import { appliedDay } from '@/lib/mail';
-import { addD, iso, mondayOf } from '@/lib/time';
+import { CAT, STAGES, STG } from '@/data/constants';
+import type { Application, CalEvent, StageKey } from '@/data/types';
+import { appliedDay, effCat } from '@/lib/mail';
+import { addD, fmtT, iso, minutesLabel, mondayOf, rel } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
 import { AcDot, CoBadge, Fact, PriBadge, Seg } from '@/ui/bits';
@@ -133,7 +133,7 @@ function Card({ a }: { a: Application }) {
   return (
     <div
       className="kc"
-      draggable
+      draggable={!a.fromCal}
       onDragStart={(e) => {
         drag.app = a.id;
         e.currentTarget.classList.add('dragging');
@@ -159,7 +159,12 @@ function Card({ a }: { a: Application }) {
         </span>
         <span className="ln wrap">
           <PriBadge p={a.pri} />
-          <span className="mut">Applied {a.applied}</span>
+          <span className="mut">{a.fromCal ? 'First meeting ' + a.applied : 'Applied ' + a.applied}</span>
+          {a.fromCal && (
+            <span className="tag" title="Made from meetings on your calendar that match no application email">
+              Calendar
+            </span>
+          )}
           {a.locked && (
             <span className="tag" title="Moved by you">
               Manual
@@ -195,9 +200,20 @@ function Card({ a }: { a: Application }) {
   );
 }
 
+/** Meeting links in calendar events often lack a scheme. */
+const href = (link: string): string => (/^https?:\/\//i.test(link) ? link : 'https://' + link);
+
 function AppDrawer({ a }: { a: Application }) {
   const st = useStore();
   const ac = getAcct(st.accts, a.acct);
+  const meetings = (a.meetingIds || []).map((id) => st.events.find((v) => v.id === id)).filter((v): v is CalEvent => !!v);
+  const co = a.co.toLowerCase();
+  const emails = st.emails
+    .filter((e) => !e.archived && (e.id === a.emailId || (!!e.company && e.company.toLowerCase() === co)))
+    .sort((x, y) => x.ago - y.ago);
+  const latest = emails[0];
+  const recruiter = emails.map((e) => e.recruiter).find((r) => r && !/^automated/i.test(r));
+  const rounds = new Set(a.meetings || []).size;
   return (
     <aside className="drawer" aria-label="Application detail">
       <div className="mhd">
@@ -216,56 +232,130 @@ function AppDrawer({ a }: { a: Application }) {
         <div className="fgrid" style={{ margin: 0 }}>
           <div>
             <span>Status</span>
-            <select className="sel" style={{ width: '100%' }} value={a.stage} onChange={(e) => st.moveApp(a.id, e.target.value as StageKey, true)} aria-label="Update status">
-              {STAGES.map((s) => (
-                <option key={s.k} value={s.k}>
-                  {s.l}
-                </option>
-              ))}
-            </select>
+            {a.fromCal ? (
+              <b style={{ fontWeight: 600 }}>{STAGES.find((x) => x.k === a.stage)?.l}</b>
+            ) : (
+              <select className="sel" style={{ width: '100%' }} value={a.stage} onChange={(e) => st.moveApp(a.id, e.target.value as StageKey, true)} aria-label="Update status">
+                {STAGES.map((s) => (
+                  <option key={s.k} value={s.k}>
+                    {s.l}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
-          <Fact label="Applied">{a.applied}</Fact>
-          <Fact label="Account">{ac.addr}</Fact>
+          <Fact label={a.fromCal ? 'First meeting' : 'Applied'}>{a.applied}</Fact>
+          <Fact label="Account">{ac.addr || 'Not known'}</Fact>
           <Fact label="Priority">
             <PriBadge p={a.pri} />
           </Fact>
+          <Fact label="Role">{a.role || 'Not stated'}</Fact>
+          <Fact label="Recruiter">{recruiter || 'Not stated'}</Fact>
+          <Fact label="Interview rounds">{rounds ? rounds + (rounds === 1 ? ' meeting day' : ' meeting days') : 'None on your calendar'}</Fact>
           <Fact label="Next interview">{a.next || 'None scheduled'}</Fact>
           <Fact label="Required action">{a.action}</Fact>
+          <Fact label="Last activity">{latest ? latest.time : a.activity}</Fact>
         </div>
+        {a.fromCal && <div className="mut">This card comes from meetings on your calendar that don't match any application email. Its stage follows the calendar.</div>}
+
         <div>
-          <span className="fl">Timeline</span>
-          <div className="tl" style={{ padding: 0 }}>
-            {a.timeline.map((t, i) => (
-              <div className="tli" key={i}>
-                <span className={cx('cdot', t.cls)} />
-                <div>
-                  <p>{t.text}</p>
-                  <span className="mut">
-                    {t.when} · {t.src}
-                  </span>
+          <span className="fl">Interviews on your calendar ({meetings.length})</span>
+          {meetings.length === 0 && <div className="mut">No meetings with {a.co} on your calendar.</div>}
+          <div className="dlist">
+            {meetings.map((v) => (
+              <div className={cx('dmeet', v.date < st.today && 'past')} key={v.id}>
+                <div className="ln" style={{ justifyContent: 'space-between' }}>
+                  <b style={{ fontWeight: 600 }}>
+                    {rel(v.date, st.today)} · {fmtT(v.start)}–{fmtT(v.end)} ET
+                  </b>
+                  <span className={cx('chip', STG[v.stage].cls)}>{v.date < st.today ? 'Done' : 'Upcoming'}</span>
+                </div>
+                <div>{v.kind === 'interview' ? v.role : v.co.trim()}</div>
+                <div className="mini">
+                  {[minutesLabel(v), v.platform, v.organizer ? 'Organizer: ' + v.organizer : ''].filter(Boolean).join(' · ')}
+                </div>
+                {(v.attendees || []).length > 0 && <div className="mini">Guests: {(v.attendees || []).slice(0, 5).join(', ') + ((v.attendees || []).length > 5 ? ' and ' + ((v.attendees || []).length - 5) + ' more' : '')}</div>}
+                <div className="ln wrap" style={{ marginTop: 4 }}>
+                  {v.link && v.date >= st.today && (
+                    <a className="btn sm pri" href={href(v.link)} target="_blank" rel="noopener noreferrer">
+                      Join meeting
+                    </a>
+                  )}
+                  {v.htmlLink && (
+                    <a className="btn sm" href={v.htmlLink} target="_blank" rel="noopener noreferrer">
+                      Open in calendar
+                    </a>
+                  )}
+                  <button type="button" className="btn sm" onClick={() => st.go('cal', { calView: 'week', calDate: v.date, calSel: v.id })}>
+                    Show in app calendar
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         </div>
+
         <div>
-          <label className="fl" htmlFor="app-notes">
-            Notes
-          </label>
-          <textarea id="app-notes" className="inp" value={a.notes} onChange={(e) => st.setAppNotes(a.id, e.target.value)} placeholder="Interview prep, contacts, salary range…" />
+          <span className="fl">Emails ({emails.length})</span>
+          {emails.length === 0 && <div className="mut">No emails from {a.co}.</div>}
+          <div className="dlist">
+            {emails.slice(0, 15).map((e) => (
+              <button type="button" className="dmail" key={e.id} onClick={() => st.openEmail(e.id)}>
+                <span className="ln" style={{ justifyContent: 'space-between' }}>
+                  <b style={{ fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.subject || '(no subject)'}</b>
+                  <span className="mut" style={{ flex: 'none' }}>
+                    {e.time}
+                  </span>
+                </span>
+                <span className="mini">
+                  {CAT[effCat(e)].l} · {e.fromName}
+                </span>
+              </button>
+            ))}
+            {emails.length > 15 && <div className="mut">and {emails.length - 15} older emails</div>}
+          </div>
         </div>
-        <div className="ln wrap">
-          <button type="button" className="btn sm" onClick={() => st.toggleAppRemind(a.id)} aria-pressed={!!a.remind}>
-            <Icon name="bell" sm />
-            {a.remind ? 'Reminder set' : 'Set reminder'}
-          </button>
-          {a.emailId && (
-            <button type="button" className="btn sm" onClick={() => st.openEmail(a.emailId)}>
-              <Icon name="mail" sm />
-              Open related email
-            </button>
-          )}
-        </div>
+
+        {a.timeline.length > 0 && (
+          <div>
+            <span className="fl">Timeline</span>
+            <div className="tl" style={{ padding: 0 }}>
+              {a.timeline.map((t, i) => (
+                <div className="tli" key={i}>
+                  <span className={cx('cdot', t.cls)} />
+                  <div>
+                    <p>{t.text}</p>
+                    <span className="mut">
+                      {t.when} · {t.src}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {!a.fromCal && (
+          <>
+            <div>
+              <label className="fl" htmlFor="app-notes">
+                Notes
+              </label>
+              <textarea id="app-notes" className="inp" value={a.notes} onChange={(e) => st.setAppNotes(a.id, e.target.value)} placeholder="Interview prep, contacts, salary range…" />
+            </div>
+            <div className="ln wrap">
+              <button type="button" className="btn sm" onClick={() => st.toggleAppRemind(a.id)} aria-pressed={!!a.remind}>
+                <Icon name="bell" sm />
+                {a.remind ? 'Reminder set' : 'Set reminder'}
+              </button>
+              {a.emailId && (
+                <button type="button" className="btn sm" onClick={() => st.openEmail(a.emailId)}>
+                  <Icon name="mail" sm />
+                  Open related email
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );

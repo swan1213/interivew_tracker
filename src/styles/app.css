@@ -428,3 +428,8 @@ button.ymd:hover{background:var(--sf2)}
 .qe.past{opacity:.6}
 .qd{width:74px;flex:none;font-size:11.5px;font-weight:600;color:var(--tx2)}
 .qe .tm{width:58px;font-size:11.5px}
+.dlist{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.dmeet{border:1px solid var(--bd);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;font-size:12.5px}
+.dmeet.past{opacity:.75}
+.dmail{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;border:1px solid var(--bd);border-radius:8px;padding:7px 10px;background:none;color:inherit;cursor:pointer;font-size:12.5px}
+.dmail:hover{background:var(--sf2)}

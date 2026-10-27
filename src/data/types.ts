@@ -139,8 +139,11 @@ export interface Application {
   ai: AiSuggestion | null;
   timeline: TimelineItem[];
   remind?: boolean;
-  /** ISO days of this company's meetings on the calendar (filled in by the tracker, not stored). */
+  /** ISO days of this company's meetings on the calendar, and their event ids (filled in by the tracker, not stored). */
   meetings?: string[];
+  meetingIds?: string[];
+  /** A card made from calendar meetings that match no application. */
+  fromCal?: boolean;
 }
 
 export interface CalEvent {

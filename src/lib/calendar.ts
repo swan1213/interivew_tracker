@@ -155,11 +155,14 @@ const SETTLED: StageKey[] = ['offer', 'hired', 'closed'];
  * days Next Step Interview. Each meeting belongs to the one company it matches best, and only from a few
  * days before the company's first email. Cards you moved yourself, and
  * offers, hires and rejections, keep their stage. `next` shows the upcoming meeting when there is one,
- * and `meetings` lists the meeting days.
+ * `meetings` and `meetingIds` list the meetings. A meeting that matches no application still gets a
+ * card of its own (`fromCal`), named after the organizer's company, so every interview is on the board.
  */
 export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const byApp = new Map<string, CalEvent[]>();
+  const loose = new Map<string, { name: string; evs: CalEvent[] }>();
+  const add = <T,>(m: Map<string, T[]>, k: string, v: T) => (m.get(k) || m.set(k, []).get(k)!).push(v);
   // A meeting well before the company's first email is about something else.
   const since = new Map(apps.map((a) => [a.id, addD(appliedDay(a.applied, today) || '0000-01-01', -3)]));
   for (const v of meetings) {
@@ -169,17 +172,80 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
       const s = a.emailId && v.emailId === a.emailId ? 10 : v.date < since.get(a.id)! ? 0 : meetingScore(v, a.co);
       if (s > top) [best, top] = [a, s];
     }
-    if (best) (byApp.get(best.id) || byApp.set(best.id, []).get(best.id)!).push(v);
+    if (best) add(byApp, best.id, v);
+    else {
+      const who = meetingCompany(v, own);
+      const g = loose.get(who.key) || loose.set(who.key, { name: who.name, evs: [] }).get(who.key)!;
+      g.evs.push(v);
+    }
   }
-  return apps.map((a) => {
+  const staged = (a: Application, mine: CalEvent[]): Application => {
     const stage = OLD_STAGE[a.stage] || a.stage;
-    const mine = byApp.get(a.id) || [];
-    const dates = mine.length ? { meetings: mine.map((v) => v.date) } : {};
-    if (a.locked || SETTLED.includes(stage)) return stage === a.stage && !mine.length ? a : { ...a, stage, ...dates };
+    const found = mine.length ? { meetings: mine.map((v) => v.date), meetingIds: mine.map((v) => v.id) } : {};
+    if (a.locked || SETTLED.includes(stage)) return stage === a.stage && !mine.length ? a : { ...a, stage, ...found };
     if (!mine.length) return stage === 'first' || stage === 'tech' || stage === 'next' ? { ...a, stage: 'review' } : a;
     const up = mine.find((v) => v.date >= today);
     // Rounds are counted by day: two entries on one day are usually the same interview twice.
     const rounds = new Set(mine.map((v) => v.date)).size;
-    return { ...a, ...dates, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+    return { ...a, ...found, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : a.next };
+  };
+  const fromCal = [...loose].map(([key, { name, evs }]): Application => {
+    const first = evs[0];
+    const last = evs[evs.length - 1];
+    return staged(
+      {
+        id: 'cal-' + key, co: name, role: first.co.trim(), stage: 'review', applied: lab(first.date).replace(/^\w+, /, ''), acct: first.acct || '', pri: 'normal', next: '',
+        activity: 'Meeting on your calendar, ' + lab(last.date), action: 'None', emailId: '', notes: '', locked: false, ai: null, fromCal: true,
+        timeline: [...evs].reverse().map((v) => ({ text: v.co.trim(), when: lab(v.date) + ', ' + fmtT(v.start) + ' ET', src: 'Calendar', cls: 'cat-confirmed' })),
+      },
+      evs,
+    );
   });
+  return [...apps.map((a) => staged(a, byApp.get(a.id) || [])), ...fromCal];
+}
+
+/** Mail and scheduling services: their domain says nothing about the employer. */
+const SERVICE_DOMAIN = /(^|\.)(gmail|googlemail|google|outlook|hotmail|live|yahoo|icloud|me|aol|proton|protonmail|calendly|zoom|greenhouse|ashbyhq|lever|gem|goodtime|paradox|myworkday|workday|smartrecruiters|icims|jobvite|teams|microsoft|calendar|linkedin)\./i;
+
+/** Who a meeting is with, for a card of its own: the organizer's or a guest's company domain, else its title. */
+export function meetingCompany(v: CalEvent, own: string[]): { key: string; name: string } {
+  const mine = new Set(own.map((a) => a.toLowerCase()));
+  const domain = [v.organizer || '', ...(v.attendees || [])]
+    .filter((p) => p.includes('@') && !mine.has(p.toLowerCase()))
+    .map((p) => p.split('@')[1].toLowerCase())
+    .find((d) => !SERVICE_DOMAIN.test(d + '.'));
+  const named = titleCompany(v.co);
+  let name = named.name;
+  if (domain && !named.sure) {
+    const parts = domain.split('.');
+    const base = parts.length > 2 && /^(co|com|org|net|ac)$/.test(parts[parts.length - 2]) ? parts[parts.length - 3] : parts[parts.length - 2];
+    name = base.charAt(0).toUpperCase() + base.slice(1);
+  }
+  return { key: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name };
+}
+
+const ROLEISH = /\b(interview|engineer|developer|manager|senior|sr|staff|lead|principal|architect|screen|call|chat|meeting|round|role|contract|remote|joshua|shin)\b/i;
+const short = (s: string) => {
+  const t = s.trim().replace(/[!.:,]+$/, '');
+  return t && t.split(/\s+/).length <= 4 && !ROLEISH.test(t) ? t : '';
+};
+
+/**
+ * The company named in a meeting title: "Interview with X", "X | Interview", "Interview | X",
+ * "Interview – X" or "… at X" (`sure`). Otherwise the title without your name.
+ */
+export function titleCompany(title: string): { name: string; sure: boolean } {
+  const t = title.replace(/​/g, '').trim();
+  const withX = t.match(/\b(?:with|at)\s+([A-Z][\w&.'’ -]*?)(?=\s*(?:[|:(@,–]|\s-\s|!|$))/);
+  const segs = t.split(/\s*[|–]\s*|\s+-\s+/);
+  const name = (withX && short(withX[1])) || short(segs[0]) || short(segs[segs.length - 1]);
+  if (name) return { name, sure: true };
+  const rest = t
+    // Your name goes, with the "and" / "+" / "/" joining it to the other person.
+    .replace(/(\s(and|&|\+|\/)\s*)?\bJoshua(\s+S(hin)?)?\b(\s*(and|&|\+|\/)\s)?/gi, ' ')
+    .replace(/\s*[-–|:,/+]\s*(?=[-–|:,/+]|$)/g, '')
+    .replace(/^[\s\-–|:,/+]+/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return { name: rest || t, sure: false };
 }

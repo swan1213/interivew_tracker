@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CalEvent } from '@/data/types';
 import type { Application } from '@/data/types';
-import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions, meetingStages } from './calendar';
+import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions, meetingStages, titleCompany } from './calendar';
 
 const ev = (id: string, start: number, end: number): CalEvent => ({ id, kind: 'interview', co: id, role: '', stage: 'screen', date: '2026-10-27', start, end, added: true });
 const lanes = (m: Map<string, { lane: number; lanes: number }>) => Object.fromEntries([...m].map(([id, l]) => [id, l.lane + '/' + l.lanes]));
@@ -73,7 +73,7 @@ describe('meetings that count as interviews', () => {
 describe('tracker stages from calendar meetings', () => {
   const app = (co: string, more: Partial<Application> = {}): Application => ({ id: 'app-' + co, co, role: '', stage: 'review', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [], ...more });
   const meet = (id: string, co: string, date: string, more: Partial<CalEvent> = {}): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, organizer: 'recruiter@acme.example', ...more });
-  const stages = (apps: Application[], evs: CalEvent[]) => Object.fromEntries(meetingStages(apps, evs, [], '2026-10-27').map((a) => [a.co, a.stage]));
+  const stages = (apps: Application[], evs: CalEvent[]) => Object.fromEntries(meetingStages(apps, evs, [], '2026-10-27').filter((a) => !a.fromCal).map((a) => [a.co, a.stage]));
 
   it('one meeting is the first interview, two or more the next step; none stays where the mail put it', () => {
     const evs = [meet('1', 'Interview with Decagon', '2026-10-21'), meet('2', 'Interview with FalconX', '2026-10-07'), meet('3', 'Interview with FalconX', '2026-10-13')];
@@ -111,7 +111,7 @@ describe('technical interviews', () => {
 describe('which company a meeting belongs to', () => {
   const app = (co: string): Application => ({ id: 'app-' + co, co, role: '', stage: 'applied', applied: 'Sep 1', acct: 'g1', pri: 'normal', next: '', activity: '', action: 'None', emailId: '', notes: '', locked: false, ai: null, timeline: [] });
   const meet = (id: string, co: string, organizer?: string): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date: '2026-10-28', organizer });
-  const owner = (apps: string[], v: CalEvent) => meetingStages(apps.map(app), [v], [], '2026-10-27').filter((a) => a.meetings).map((a) => a.co);
+  const owner = (apps: string[], v: CalEvent) => meetingStages(apps.map(app), [v], [], '2026-10-27').filter((a) => a.meetings && !a.fromCal).map((a) => a.co);
 
   it('goes to the one company it names, not to names made of generic words', () => {
     expect(owner(['Inc', 'Rebuy'], meet('1', 'Interview with Rebuy, Inc.', 'Interview Calendar'))).toEqual(['Rebuy']);
@@ -141,5 +141,31 @@ describe('meetings that are not about this application', () => {
 
   it('counts the same interview entered twice on one day once', () => {
     expect(stage(app('Ingram Content', 'Oct 15'), [meet('1', 'Phone interview - Ingram Content Group', '2026-10-22'), meet('2', 'Phone interview - Ingram Content Group', '2026-10-22')])).toBe('first');
+  });
+});
+
+describe('meetings that match no application', () => {
+  const meet = (id: string, co: string, date: string, more: Partial<CalEvent> = {}): CalEvent => ({ ...ev(id, 13, 14), kind: 'busy', stage: 'busy', co, date, ...more });
+
+  it('get a card of their own, so every interview is on the board', () => {
+    const out = meetingStages([], [meet('1', 'Hiring Manager Chat- Cloud Engineer- Joshua Shin', '2026-10-26', { organizer: 'Boucher, Louisa', acct: 'g1' })], [], '2026-10-27');
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ co: 'Hiring Manager Chat- Cloud Engineer', stage: 'first', fromCal: true, applied: 'Oct 26', acct: 'g1', meetingIds: ['1'] });
+  });
+
+  it('group meetings with the same company into one card', () => {
+    const out = meetingStages([], [
+      meet('1', 'Candidate Interview: Joshua Shin - Senior QA Engineer | Velotic', '2026-09-10'),
+      meet('2', '2nd Interview: Joshua Shin - Senior QA Engineer | Velotic', '2026-09-23'),
+      meet('3', 'Joshua Shin and Ryan Demmer', '2026-07-20', { organizer: 'rdemmer@collectors.com', attendees: ['me@gmail.com', 'rdemmer@collectors.com'] }),
+    ], ['me@gmail.com'], '2026-10-27');
+    expect(out.map((a) => a.co + '/' + a.stage)).toEqual(['Collectors/first', 'Velotic/next']);
+  });
+
+  it('find the company in the title', () => {
+    expect(titleCompany('Interview with Rebuy, Inc.').name).toBe('Rebuy');
+    expect(titleCompany('Smarsh | Final round interview - James Wagner').name).toBe('Smarsh');
+    expect(titleCompany('Joshua Shin and Laura Mammen').name).toBe('Laura Mammen');
+    expect(titleCompany('HTEC AI Compiler & Runtime – Joshua Shin').name).toBe('HTEC AI Compiler & Runtime');
   });
 });
