@@ -11,11 +11,10 @@ export function inView(e: Email, view: InboxView): boolean {
   const c = effCat(e);
   switch (view) {
     case 'action': return needsAction(e);
-    case 'invite': return c === 'invite' || e.sec === 'invite';
+    // Interview invitations include requests for availability: both lead to an interview.
+    case 'invite': return c === 'invite' || c === 'avail' || e.sec === 'invite' || e.sec === 'avail';
     // A reschedule request is an action, not a request for availability.
     case 'avail': return (c === 'avail' || e.sec === 'avail') && e.mode !== 'resched';
-    case 'status': return c === 'status';
-    case 'applied': return c === 'applied';
     case 'offers': return c === 'offer';
     case 'rejected': return c === 'rejected';
     case 'auto': return c === 'auto' || e.sec === 'auto';

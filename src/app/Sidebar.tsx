@@ -53,11 +53,8 @@ export function Sidebar() {
   ];
   const navViews: NavItem[] = [
     nav('Action Required', 'bolt', actionN, true, inb('action'), view('action')),
-    nav('Interview Invitations', 'video', viewUnread(mine, 'invite'), false, inb('invite'), view('invite')),
-    nav('Availability Requests', 'clock', viewUnread(mine, 'avail'), false, inb('avail'), view('avail')),
+    nav('Interview Invitations', 'video', viewUnread(mine, 'invite'), false, inb('invite') || inb('avail'), view('invite')),
     nav('Upcoming Interviews', 'checkc', 0, false, pg === 'cal' && st.calView === 'agenda', () => st.go('cal', { calView: 'agenda', calDate: st.today })),
-    nav('Application Updates', 'info', viewUnread(mine, 'status'), false, inb('status'), view('status')),
-    nav('Application Confirmations', 'file', viewUnread(mine, 'applied'), false, inb('applied'), view('applied')),
     nav('Offers', 'award', viewUnread(mine, 'offers'), true, inb('offers'), view('offers')),
     nav('Rejections', 'xc', 0, false, inb('rejected'), view('rejected')),
     nav('Automated / No-Reply', 'bot', viewUnread(mine, 'auto'), false, inb('auto'), view('auto')),

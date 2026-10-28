@@ -5,6 +5,7 @@ import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email, ThreadMsg } from '@/data/types';
 import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
+import { activeEvents, isInterviewMeeting, meetingMentions } from '@/lib/calendar';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -188,6 +189,14 @@ function EmailRow({ e, selected }: { e: Email; selected: boolean }) {
 
 interface DetailAction { label: string; primary: boolean; run: () => void }
 
+/** A meeting from today on that this email's company already has on the calendar. */
+function bookedMeeting(e: Email, st: Pick<AppState, 'events' | 'accts' | 'today'>): CalEvent | undefined {
+  const own = st.accts.map((a) => a.addr);
+  return activeEvents(st.events)
+    .filter((v) => v.date >= st.today && isInterviewMeeting(v, own) && (v.emailId === e.id || v.id === e.evId || (!!e.company && meetingMentions(v, e.company))))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start)[0];
+}
+
 /** The one or two next-step buttons for an email that still needs action. */
 function detailActions(e: Email, ev: CalEvent | undefined, st: AppState): DetailAction[] {
   if (!needsAction(e)) return [];
@@ -195,7 +204,11 @@ function detailActions(e: Email, ev: CalEvent | undefined, st: AppState): Detail
   const acts: DetailAction[] = [];
   // Scheduling by reply needs someone to read the reply; a no-reply sender schedules through a link.
   const byReply = e.canReply && !isNoReply(e.fromAddr);
-  if (e.mode === 'avail' && byReply) {
+  // Nothing to schedule when the meeting is already on the calendar.
+  const booked = e.mode === 'avail' ? bookedMeeting(e, st) : undefined;
+  if (booked) {
+    acts.push({ label: 'View on calendar', primary: true, run: () => st.go('cal', { calView: 'week', calDate: booked.date, calSel: booked.id }) });
+  } else if (e.mode === 'avail' && byReply) {
     acts.push({ label: 'Schedule interview', primary: true, run: () => st.openSched('avail') });
     acts.push({ label: 'Open calendar', primary: false, run: () => st.go('cal', { calView: 'week', calDate: st.today }) });
   } else if (e.mode === 'resched' && byReply) {

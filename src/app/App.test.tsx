@@ -149,6 +149,16 @@ describe('App', () => {
     }
   });
 
+  it('an availability request with the meeting already booked offers the calendar, not scheduling', () => {
+    const d = useStore.getState();
+    const booked = { id: 'vm', kind: 'interview' as const, co: 'Interview with Microsoft', role: 'Hiring manager', stage: 'mgr' as const, date: '2026-10-28', start: 13, end: 14, added: true };
+    reset({ page: 'inbox', selId: 'e1', events: [...d.events, booked] });
+    mount();
+    const labels = Array.from(container.querySelectorAll('button')).map((b) => b.textContent);
+    expect(labels).not.toContain('Schedule interview');
+    expect(labels).toContain('View on calendar');
+  });
+
   it('scheduling flow: pick slots, generate, confirm send', () => {
     reset({ page: 'inbox', selId: 'e1' });
     mount();

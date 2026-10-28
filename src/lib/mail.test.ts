@@ -38,6 +38,8 @@ describe('inbox filtering', () => {
     expect(ids(filterEmails(data.emails, { ...base, view: 'action' }, data.apps)).sort()).toEqual(['e1', 'e10', 'e2', 'e4', 'e7', 'e8', 'e9']);
     // e7 is a reschedule request: an action, not a request for availability.
     expect(ids(filterEmails(data.emails, { ...base, view: 'avail' }, data.apps)).sort()).toEqual(['e1', 'e10']);
+    // Interview invitations include the requests for availability.
+    expect(ids(filterEmails(data.emails, { ...base, view: 'invite' }, data.apps))).toEqual(expect.arrayContaining(['e1', 'e10']));
     expect(ids(filterEmails(data.emails, { ...base, view: 'auto' }, data.apps)).sort()).toEqual(['e11', 'e3', 'e8']);
     expect(ids(filterEmails(data.emails, { ...base, view: 'offers' }, data.apps))).toEqual(['e9']);
   });
@@ -45,7 +47,7 @@ describe('inbox filtering', () => {
   it('honors a user reclassification', () => {
     const e = { ...data.emails[2], catOv: 'review' as const };
     expect(effCat(e)).toBe('review');
-    expect(inView(e, 'applied')).toBe(false);
+    expect(inView(e, 'invite')).toBe(false);
   });
 
   it('applies account, priority, company and date filters', () => {

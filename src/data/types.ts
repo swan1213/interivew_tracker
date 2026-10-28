@@ -23,8 +23,8 @@ export interface Member {
   owner?: boolean;
 }
 export type InboxView =
-  | 'inbox' | 'action' | 'invite' | 'avail' | 'status'
-  | 'applied' | 'offers' | 'rejected' | 'auto' | 'sent' | 'other';
+  | 'inbox' | 'action' | 'invite' | 'avail'
+  | 'offers' | 'rejected' | 'auto' | 'sent' | 'other';
 export type CalView = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'agenda';
 export type SortKey = 'newest' | 'oldest' | 'priority' | 'deadline';
 export type CompMode = 'reply' | 'replyall' | 'forward';

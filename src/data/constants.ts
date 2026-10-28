@@ -109,8 +109,6 @@ export const INBOX_TITLES: Record<InboxView, string> = {
   action: 'Action required',
   invite: 'Interview invitations',
   avail: 'Availability requests',
-  status: 'Application updates',
-  applied: 'Application confirmations',
   offers: 'Offers',
   rejected: 'Rejections',
   auto: 'Automated / no-reply',
