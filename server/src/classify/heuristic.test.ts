@@ -282,3 +282,60 @@ describe('offers with dates and deadlines', () => {
     expect(classifyHeuristic(offer('If the team agrees, we will extend you an offer next week.'), NOW).cat).not.toBe('offer');
   });
 });
+
+describe('receipts, calendar notices and booked interviews are not requests', () => {
+  const msg = (fromAddr: string, subject: string, bodyText: string): ParsedMessage => ({
+    id: 'm', threadId: 'tm', fromName: 'Recruiting', fromAddr, to: 'me@gmail.com', subject, date: '2026-10-28T15:00:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+  const c = (fromAddr: string, subject: string, bodyText: string) => classifyHeuristic(msg(fromAddr, subject, bodyText), NOW);
+
+  it('a receipt that describes a possible assessment later is a receipt', () => {
+    const r = c('no-reply@boomi.com', 'Thanks for applying for the Senior Presales Systems Engineer role with Boomi!',
+      'Your application has been received.\nIf we determine it\'s a match, we\'ll reach out to schedule the next steps. This is typically an interview with the Hiring Manager but could include an assessment.');
+    expect(r.cat).toBe('applied');
+    expect(r.mode).toBeUndefined();
+  });
+
+  it('a receipt saying a recruiter will contact you if selected is a receipt', () => {
+    const r = c('collegeboard@myworkday.com', 'College Board: Thank You for Applying',
+      "We've received your application for the position of Full Stack Engineer.\n*If selected, a recruiter will contact you to schedule a phone or video screen.\nIt is a priority of ours to provide an update to every applicant by the time a search has been filled.");
+    expect(r.cat).toBe('applied');
+    const sga = c('humanresources@sgainc.com', 'Application Received for Job #26-02396', 'We have received your resume. Please feel free to update your information with us at any time.');
+    expect(sga.cat).toBe('applied');
+  });
+
+  it('a receipt without receipt wording in the subject is still a receipt', () => {
+    const r = c('no-reply@ashbyhq.com', 'Your FutureFit AI app is in good hands, Gregory!',
+      "Thanks for applying for the Software Engineer role at FutureFit AI. We're excited to meet you! Our team will review yours for initial fit as soon as we can. We're committed to letting you know whether there's a fit either way.");
+    expect(r.cat).toBe('applied');
+  });
+
+  it('a real assessment is still an assessment', () => {
+    const r = c('no-reply@array.com', 'Array Next Steps', 'The next step in our process is several assessments. Assessment 1 takes 15 minutes: https://www.ondemandassessment.com/link/x');
+    expect(r.cat).toBe('action');
+    expect(r.mode).toBe('assess');
+  });
+
+  it("a calendar notice is a booked meeting: its Reschedule link asks nothing", () => {
+    const r = c('valerie@mechanize.work', 'Invitation from an unknown sender: Joshua Shin and Valerie Kendrick @ Thu Oct 29, 2026 2:40pm - 3:10pm (PDT) (me@gmail.com)',
+      "This event isn't in your calendar yet.\nEvent Name\nMechanize interview\nNeed to make changes to this event?\nCancel: https://calendly.com/cancellations/x\nReschedule: https://calendly.com/reschedulings/x");
+    expect(r.cat).toBe('confirmed');
+    expect(r.mode).toBeUndefined();
+    expect(r.needs).toBe(false);
+    expect(c('anthony@artemissecurity.com', 'Updated invitation: Artemis Interview (Virtual) @ Wed Oct 28, 2026 1pm - 1:30pm (ADT) (me@gmail.com)', 'This event has been updated\nChanged: time').cat).toBe('confirmed');
+    expect(c('devin@lumalabs.ai', 'Canceled event from an unknown sender: Luma | Interview @ Wed Oct 28, 2026 10pm - 10:30pm (ADT)', 'This event has been canceled and removed from your calendar.').cat).toBe('status');
+  });
+
+  it('an interview reminder offering to reschedule is a booked interview', () => {
+    const r = c('no-reply@bluevine.com', 'Interview reminder: Lead AI Solutions Engineer at Bluevine - US',
+      'Reminder: Your interview with Bluevine - US is coming up.\nIf you have any questions or need to reschedule, please reach out.');
+    expect(r.cat).toBe('confirmed');
+  });
+
+  it('a recruiter asking to reschedule is still a reschedule request', () => {
+    const r = c('c-liz.houghton@rithum.com', 'Missed Interview – Next Steps',
+      "We had an interview scheduled today, but it appears we missed each other. Please let me know if you're still interested in the role and would like to reschedule.");
+    expect(r.mode).toBe('resched');
+  });
+});

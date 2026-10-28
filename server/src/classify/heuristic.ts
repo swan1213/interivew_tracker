@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 7;
+export const RULES_VERSION = 8;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -31,7 +31,30 @@ export function isJobAlert(p: Pick<ParsedMessage, 'fromAddr' | 'subject' | 'body
 }
 
 /** Subjects of application receipts ("Thanks for applying to X", "Application received"). */
-const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your interest|submitting)|application (received|submitted|confirmation|complete)|we('ve| have) received your application|your application (to|for|at|with|has been|was))\b/i;
+const RECEIPT_SUBJECT = /\b(thanks? (you )?for (applying|your application|your interest|submitting)|application (received|submitted|confirmation|complete)|received your\b[^\n]{0,80}\bapplication|(we('ve)?|we have) got your application|we got your application|your application (to|for|at|with|has been|was|is in))\b/i;
+
+/**
+ * Notices a calendar sends about a meeting ("Invitation: Interview with X @ Tue Oct 13, 2026 11am",
+ * "Updated invitation: ...", "Canceled event: ..."). The meeting is already on the calendar; their
+ * "Reschedule" and "Add to calendar" links are not a request.
+ */
+const CAL_NOTICE = /^(?:(?:updated |new )?invitation(?: from an unknown sender)?|accepted|declined|tentatively accepted|reminder|appointment booked|(?:canceled|cancelled) (?:event|invitation)(?: from an unknown sender)?|event (?:canceled|cancelled))\s*:[^\n]*@ (?:mon|tue|wed|thu|fri|sat|sun)\b/i;
+const CAL_CANCELED = /^(?:canceled|cancelled|event (?:canceled|cancelled))/i;
+
+/**
+ * Sentences about what may happen later ("if selected, a recruiter will contact you to schedule a screen",
+ * "our process typically includes an assessment"). They describe the process; nobody is asking yet.
+ */
+const LATER = /\b(if (selected|we|you('re| are) (selected|shortlisted)|your (application|background|skills|experience|qualifications|profile|resume)|there('s| is) a (match|fit)|it's a (match|fit))|should (we|your)|once (we|your)|in the event|(will|'ll) (be in touch|reach out|contact you|get in touch|let you know)|may (include|involve)|could (include|involve)|typically|process (includes?|consists|involves|looks like)|what('s| is| happens) next|what to expect)\b/i;
+
+/** "Reschedule" offered as an option (a link, "if you need to reschedule"), not asked for. */
+const RESCHED_OPTION = /^\s*reschedule( (interview|meeting|event|call))?\s*$|\b(if you (need|have|want) to|(if|should) you\b[^.!?]{0,40}\bneed to reschedul\w*|should you need to|need to make changes|(link|here|button|page|click) to (cancel or )?reschedule|to cancel or reschedule|cancel(ling)? or reschedul\w*|reschedul\w* or cancel\w*|reschedule:|reschedule (here|this|your|using|via|through|by|at))\b|\breschedule\s*(<|\(|https?:)/i;
+const ASSESS_TERM = /\b(assessments?|take-home|take home|coding challenge|hackerrank|codility|online test|technical test)\b/i;
+/** Reminders and notices of a booked interview ("Interview reminder: ...", "Your interview with X is scheduled for ..."). */
+const BOOKED_SUBJECT = /\b(interview|meeting|call) confirmation\b|\byou(['’]re| are) scheduled\b|\b(interview|meeting|call) reminder\b|\breminder\b[^\n]*\b(interview|meeting|call)\b|\b(interview|meeting|call)\b[^\n]*\bis (scheduled|confirmed|coming up|tomorrow|today)\b/i;
+
+/** An assessment is assigned, not just mentioned: a link, a request to take it, or a reminder. */
+const ASSESS_ASK = /\b(please|complete|take|start|begin|click|invit\w*|next step|link|access|finish|expires?|reminder|haven't completed|received the)\b/i;
 /** Subjects that do ask to schedule, even when they also thank you for applying. */
 const SCHEDULING_SUBJECT = /\b(interview|schedul\w*|availability|invitation|invite|next steps?|call|chat|meet)\b/i;
 
@@ -211,18 +234,25 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   // Offers count only in plain statements, not in fraud warnings ("never share details as part of a job offer")
   // or conditions ("if we extend an offer"). "Job offer" / "formal offer" also show up where a receipt
   // describes the process ("...then we'll talk about a formal offer"), so those need more than that.
-  const plain = text.split(/(?<=[.!?])\s+|\n+/).filter((s) => !isHedged(s));
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  const plain = sentences.filter((s) => !isHedged(s));
   const inPlain = (re: RegExp) => plain.some((s) => re.test(s));
+  // Requests are read only from sentences that ask now, not from ones describing what may come later.
+  const asking = sentences.filter((s) => !LATER.test(s));
+  const asks = (re: RegExp) => asking.some((s) => re.test(s));
+  const calNotice = CAL_NOTICE.test(p.subject);
   const strongOffer = inPlain(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|offer of employment)\b/i);
   const looseOffer = inPlain(/\b(job offer|formal offer)\b/i);
-  const rejectHit = has(/\b(not (be )?moving forward|move forward with other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|pursue other candidates)\b/i);
-  const reschedHit = has(/\breschedul\w*|\bmove (our|the|this|your|[a-z]+day'?s) (interview|call|meeting|conversation)|\bnew time\b|\bpush (back|our)/i);
-  const confirmedHit = has(/\b(interview|call|session|meeting|conversation)\b[^.\n]{0,60}\b(is |has been )?(confirmed|scheduled|booked|set)\b|\bconfirmed:|\bconfirmation\b[^.\n]{0,40}\binterview|\bis confirmed\b|\bcalendar invite\b/i);
-  const availHit = has(/\b(availability|available|free)\b[^.\n]{0,80}\b(time|times|slot|slots|day|days|week)\b|\b(share|send|provide|suggest|let me know|let us know)\b[^.\n]{0,40}\b(times?|slots?|availability|time works)\b|\bwhat (times?|days?) work|\bwhen (are|would|will) you|\bwhich time\b/i);
-  const inviteHit = has(/\binvit(e|ed|ation)\b[^.\n]{0,60}\b(interview|call|screen|screening|conversation|chat)\b|\b(would like|we'd like|like|want) to (schedule|set up|arrange|invite you|speak|talk|chat)\b|\bnext (step|round)\b[^.\n]{0,60}\b(interview|call|conversation)/i);
-  const assessHit = has(/\b(assessment|take-home|take home|coding challenge|hackerrank|codility|online test|technical test)\b/i);
-  const actionHit = assessHit || has(/\bplease (send|complete|submit|provide|fill|upload|sign|return|confirm)\b|\b(could|can|would) you (please )?(send|provide|share|complete|submit|confirm|fill)\b|\bdeadline\b|\bdue (by|on)\b|\bno later than\b/i);
-  const appliedHit = has(/\b(received your application|thank you for applying|thanks for applying|application (has been |was )?(received|submitted)|we('ve| have) received your (application|submission)|successfully (submitted|applied))\b/i);
+  const rejectHit = has(/\b(not (be )?moving forward|move forward with other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|(have|has) filled the (position|role)|pursue other candidates)\b/i);
+  const reschedHit = !calNotice && asking.some((s) => !RESCHED_OPTION.test(s) && /\breschedul\w*|\bmove (our|the|this|your|[a-z]+day'?s) (interview|call|meeting|conversation)|\bnew time\b|\bpush (back|our)/i.test(s));
+  const confirmedHit = has(/\b(interview|call|session|meeting|conversation)\b[^.\n]{0,60}\b(is |has been )?(confirmed|scheduled|booked|set)\b|\bconfirmed:|\bconfirmation\b[^.\n]{0,40}\binterview|\bis confirmed\b|\b(pleased|happy|excited|writing) to confirm (your|our|the) (upcoming )?(\w+ ){0,3}(interview|call|meeting|conversation|chat)\b|\bcalendar invite\b/i);
+  // "Feel free to update your profile at any time" and "provide an update by the time..." are not asking for times.
+  const availHit = asks(/\b(availability|available|(are|you're|you are) free)\b[^.\n]{0,80}\b(time|times|slot|slots|day|days|week)\b|\b(share|send|provide|suggest|let me know|let us know)\b[^.\n]{0,40}\b(your (availability|available times?)|(a few|some|two|three|couple of|several|\d) (times?|slots?)|time slots?|what time works|times? that works?|availability)\b|\bwhat (times?|days?) work|\bat what time\b|\bwhen (are|would|will) you|\bwhich time\b/i);
+  const inviteHit = asks(/\blink to (book|schedule)\b|\b(book|schedule|pick|select|choose) (a|some) (time|slot)\b|\binvit(e|ed|ation)\b[^.\n]{0,60}\b(interview|call|screen|screening|conversation|chat)\b|\b(would like|we'd like|like|want) to (schedule|set up|arrange|invite you|speak|talk|chat)\b|\bnext (step|round)\b[^.\n]{0,60}\b(interview|call|conversation)/i);
+  const assessHit = asking.map((s) => s.replace(/\S*https?:\/\/\S+/g, '')).some((s) => ASSESS_TERM.test(s) && ASSESS_ASK.test(s) && !/\b(assessment (report|of|partner)|(has been|was) (completed|submitted)|refrain|ai tools?)\b/i.test(s));
+  const testHit = asks(/\b(start|take|access) (the|a|an|this) (\w+ ){0,3}(test|evaluation)\b/i);
+  const actionHit = assessHit || testHit || asks(/\bplease (send|complete|submit|provide|fill|upload|sign|return|confirm)\b|\b(could|can|would) you (please )?(send|provide|share|complete|submit|confirm|fill)\b|\bdeadline\b|\bdue (by|on)\b|\bno later than\b/i);
+  const appliedHit = has(/\b(received your application|thank you for applying|thanks for applying|thank(s| you) for your application|application (has been |was )?(received|submitted)|we('ve| have) received your (application|submission)|successfully (submitted|applied))\b/i);
   const statusHit = has(/\b(update on your application|status of your application|under review|still reviewing|being reviewed|moved to the next stage|with the hiring team|reviewing your application)\b/i);
   const autoHit = noReply || has(/\b(job alert|new (roles|jobs|positions) (match|for you)|roles match|unsubscribe|newsletter|digest|weekly (roundup|summary))\b/i);
   const subjInvite = /\binvit/i.test(p.subject);
@@ -242,13 +272,17 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   if (newsletter) { cat = 'auto'; conf = 90; }
   // A job alert lists openings; nobody there is asking you anything.
   else if (jobAlert) { cat = 'auto'; conf = 92; }
+  // A calendar's own notice: the meeting is booked (or canceled); nothing to schedule.
+  else if (calNotice) { cat = CAL_CANCELED.test(p.subject) ? 'status' : 'confirmed'; conf = 95; }
   else if (offerHit) { cat = 'offer'; conf = 92; }
   else if (rejectHit && !confirmedHit) { cat = 'rejected'; conf = 88; }
+  // A reminder of a booked interview; "complete your interview" reminders are for one-way video interviews.
+  else if (BOOKED_SUBJECT.test(p.subject) && !reschedHit && !/\bcomplete\b/i.test(p.subject)) { cat = 'confirmed'; conf = 90; }
   // An application receipt often carries a copy of the form or résumé ("available from...", "when would you
   // start"), which reads like a scheduling request. Its subject says what it is; an assessment still counts.
   // A person writing "Thanks for applying, when are you free?" is still asking.
   else if (RECEIPT_SUBJECT.test(p.subject) && !SCHEDULING_SUBJECT.test(p.subject) && (noReply || !(availHit || inviteHit))) {
-    if (assessHit) { cat = 'action'; conf = 84; mode = 'assess'; }
+    if (assessHit || testHit) { cat = 'action'; conf = 84; mode = 'assess'; }
     else { cat = statusHit && !appliedHit ? 'status' : 'applied'; conf = 92; }
   }
   else if (reschedHit && (availHit || inviteHit || confirmedHit || actionHit || /\b(interview|call)\b/i.test(text))) { cat = 'action'; sec = 'avail'; conf = 90; mode = 'resched'; }
@@ -262,7 +296,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
     else { cat = 'invite'; conf = 84; }
     mode = 'avail';
   }
-  else if (actionHit) { cat = 'action'; conf = 84; if (assessHit) mode = 'assess'; }
+  else if (actionHit) { cat = 'action'; conf = 84; if (assessHit || testHit) mode = 'assess'; }
   else if (appliedHit) { cat = 'applied'; conf = 92; }
   else if (statusHit) { cat = 'status'; conf = 84; }
   else if (autoHit) { cat = 'auto'; conf = 80; }
@@ -305,7 +339,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
     opts = timed.map((h) => [h.date, h.start! + zoneToEt(h.zone)] as [string, number]);
     need = 1;
   }
-  if ((cat === 'confirmed' || cat === 'offer') && timed.length) {
+  if ((cat === 'confirmed' || cat === 'offer') && timed.length && !calNotice) {
     const h = timed[0];
     const start = h.start! + zoneToEt(h.zone);
     const end = h.end !== undefined ? h.end + zoneToEt(h.zone) : start + 1;
@@ -331,7 +365,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   else if (cat === 'status' || cat === 'review') pri = 'normal';
   else pri = 'low';
 
-  const needs = cat === 'avail' || cat === 'invite' || cat === 'confirmed' || cat === 'offer' || cat === 'action';
+  const needs = !calNotice && (cat === 'avail' || cat === 'invite' || cat === 'confirmed' || cat === 'offer' || cat === 'action');
   const canReply = !noReply;
 
   const replyKind =
@@ -346,6 +380,7 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
 
   const action =
     cat === 'avail' || cat === 'invite' ? 'Reply with ' + (need || 2) + ' available time slot' + ((need || 2) > 1 ? 's' : '')
+    : calNotice ? (cat === 'status' ? 'None. The meeting was canceled' : 'None. The meeting is on your calendar')
     : cat === 'confirmed' ? 'Add the interview to your calendar' + (p.atts.length ? ' and review the attachment' : '')
     : cat === 'offer' ? 'Review the offer' + (deadline ? ' and reply by ' + deadline : '')
     : cat === 'rejected' ? 'None. Consider a short thank-you'
