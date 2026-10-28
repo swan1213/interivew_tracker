@@ -45,3 +45,14 @@ describe('date and time extraction', () => {
     expect(zoneToEt(undefined)).toBe(0);
   });
 });
+
+describe('zones written after a time', () => {
+  it('reads GMT offsets, zone names and parenthesized abbreviations', () => {
+    const at = (text: string) => extractDateTimes(text, REF)[0];
+    expect(at('Date/Time: Oct 28, 2026 3:00pm-3:30pm (GMT-03:00) Atlantic Time (Canada)').zone).toBe('GMT-03:00');
+    expect(at('Wednesday Oct 28, 2026 ⋅ 1pm – 1:30pm Atlantic Time - Halifax').zone).toBe('ADT');
+    expect(at('Wednesday, October 28, 2026 - 8:30 PM - 9:00 PM (ADT) - Recruiter Screen').zone).toBe('ADT');
+    expect(zoneToEt('GMT-03:00')).toBe(-1);
+    expect(zoneToEt('GMT-07:00')).toBe(3);
+  });
+});

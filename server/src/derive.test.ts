@@ -62,6 +62,14 @@ describe('interviews from calendar invitations', () => {
     expect(s.emails[0].evRemoved).toBeUndefined();
   });
 
+  it('a confirmation for a meeting already on the calendar at that time points at it and needs nothing', () => {
+    const t = thread('t1', 'Luma - Recruiter Screen Interview Confirmation', '2026-10-25T10:00:00Z', 'Your recruiter screen is confirmed.');
+    t.classification = { cat: 'confirmed', needs: true, action: 'Add the interview to your calendar', company: 'Devin', stage: 'Interview', times: [], facts: [], assumptions: [], event: { date: '2026-10-28', start: 21.25, end: 21.75 } } as unknown as Classification;
+    const s = buildSnapshot([acct], { g1: { threads: { t1: t }, skipped: [], lastSync: null } }, now, { g1: [busy('xyz')] });
+    expect(s.events).toEqual([]);
+    expect(s.emails[0]).toMatchObject({ evId: 'gcal-g1-xyz', needs: false });
+  });
+
   it('keeps its own event when the interview is beyond the window the calendar sync reads', () => {
     const far = invite();
     far.classification!.event = { date: '2027-02-01', start: 21, end: 21.5 };

@@ -7,6 +7,9 @@ const MONTHS: Record<string, number> = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4,
 /** Hours to add to a time expressed in `zone` to get Eastern time (the app's base zone). */
 export function zoneToEt(zone?: string): number {
   const z = (zone || 'ET').toUpperCase();
+  // "GMT-03:00": Eastern is GMT-4 here, like the fixed abbreviations below.
+  const off = z.match(/^(?:GMT|UTC)([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (off) return -4 - (off[1] === '-' ? -1 : 1) * (parseInt(off[2], 10) + (off[3] ? parseInt(off[3], 10) / 60 : 0));
   const map: Record<string, number> = { AST: -1, ADT: -1, ET: 0, EST: 0, EDT: 0, CT: 1, CST: 1, CDT: 1, MT: 2, MST: 2, MDT: 2, PT: 3, PST: 3, PDT: 3, UTC: -4, GMT: -4 };
   return map[z] ?? 0;
 }
@@ -138,6 +141,18 @@ function toHours(h: string, mm: string | undefined, mer: string | undefined): nu
   return H + M / 60;
 }
 
+const LONG_ZONE: Record<string, string> = { atlantic: 'ADT', eastern: 'ET', central: 'CT', mountain: 'MT', pacific: 'PT' };
+
+/** A zone written out after a time: "(GMT-03:00)", "UTC+1", "Atlantic Time - Halifax", "Pacific Time (US & Canada)". */
+function zoneAfter(rest: string): string | undefined {
+  const off = rest.match(/^\s*\(?\s*(GMT|UTC)\s*([+-])\s*(\d{1,2})(?::?(\d{2}))?/i);
+  if (off) return off[1].toUpperCase() + off[2] + off[3] + (off[4] ? ':' + off[4] : '');
+  const abbr = rest.match(/^\s*\(\s*(ET|EST|EDT|AST|ADT|PT|PST|PDT|CT|CST|CDT|MT|MST|MDT|UTC|GMT)\s*\)/i);
+  if (abbr) return abbr[1].toUpperCase();
+  const long = rest.match(/^\s*\(?\s*(atlantic|eastern|central|mountain|pacific)(?: (?:standard|daylight))? time\b/i);
+  return long ? LONG_ZONE[long[1].toLowerCase()] : undefined;
+}
+
 function timesIn(line: string): TimeTok[] {
   const out: TimeTok[] = [];
   TIME_RE.lastIndex = 0;
@@ -153,7 +168,7 @@ function timesIn(line: string): TimeTok[] {
       const e = toHours(m[4], m[5], mer2 || mer1);
       if (e !== null) end = e;
     }
-    out.push({ start, end, zone: m[7] ? m[7].toUpperCase() : undefined, index: m.index, raw: m[0] });
+    out.push({ start, end, zone: m[7] ? m[7].toUpperCase() : zoneAfter(line.slice(m.index + m[0].length)), index: m.index, raw: m[0] });
   }
   return out;
 }

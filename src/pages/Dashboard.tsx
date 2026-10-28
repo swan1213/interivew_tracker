@@ -5,7 +5,7 @@ import { DFULL, MN, PRI_RANK, STAGES, STG, type IconName } from '@/data/constant
 import type { CalEvent, Email } from '@/data/types';
 import { effCat, inView, needsAction } from '@/lib/mail';
 import { currentMember } from '@/lib/roles';
-import { activeEvents, busyAt, looksLikeInterview } from '@/lib/calendar';
+import { activeEvents, busyAt, isInterviewMeeting, meetingMentions } from '@/lib/calendar';
 import { dObj, fmtT, lab, minutesLabel, rel, tzOffset } from '@/lib/time';
 import { cx, firstName, truncate } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -16,15 +16,42 @@ interface Kpi { label: string; icon: IconName; n: number; hot?: boolean; go: () 
 /** Mail that counts toward the job-search numbers (not your own sent mail, automated or unrelated mail). */
 const isRecruitment = (e: Email): boolean => !['auto', 'other', 'sent'].includes(effCat(e));
 
+const PERSONAL_MAIL = /^(gmail|googlemail|outlook|hotmail|live|yahoo|icloud|me|aol|proton|protonmail)\./i;
+
+/** A calendar meeting with the same company as an email: named in it, or someone from the sender's own domain on it. */
+function sameParty(e: Email, v: CalEvent): boolean {
+  if (e.company && meetingMentions(v, e.company)) return true;
+  const dom = (e.fromAddr.split('@')[1] || '').toLowerCase();
+  if (!dom || PERSONAL_MAIL.test(dom)) return false;
+  return [v.organizer || '', ...(v.attendees || [])].some((p) => p.toLowerCase().endsWith('@' + dom));
+}
+
 /** One row of Upcoming interviews: a scheduled event, or an interview confirmed by email whose time wasn't stated. */
 export interface UpcomingItem { id: string; ev?: CalEvent; email?: Email }
 
-export function upcomingInterviews(events: CalEvent[], all: Email[], today: string): UpcomingItem[] {
-  const evs = events
-    .filter((v) => v.date >= today && (v.kind === 'interview' ? v.added || !!v.emailId : looksLikeInterview(v.co)))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
+export function upcomingInterviews(events: CalEvent[], all: Email[], today: string, own: string[] = []): UpcomingItem[] {
+  const active = activeEvents(events);
+  // Interviews on the calendar, by the same rule as the Calendar and the Tracker.
+  const onCal = active.filter((v) => v.date >= today && isInterviewMeeting(v, own));
+  const byId = new Map(all.map((e) => [e.id, e]));
+  // An interview from an email that isn't on the calendar. The calendar wins when it already has a meeting at
+  // that time, or one with that sender's company that day (the email's time may since have moved or been canceled).
+  const fromMail = events.filter((v) => {
+    if (v.added || v.kind !== 'interview' || !v.emailId || v.date < today) return false;
+    const e = byId.get(v.emailId);
+    return !onCal.some((c) => c.date === v.date && ((c.start < v.end && v.start < c.end) || (!!e && sameParty(e, c))));
+  });
+  const evs = [...onCal, ...fromMail].sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const withEvent = new Set(evs.map((v) => v.emailId).filter(Boolean));
-  const untimed = all.filter((e) => effCat(e) === 'confirmed' && !e.evId && !e.evRemoved && !withEvent.has(e.id) && !e.done);
+  // Confirmed by email this past week with no time stated: still to act on, and not a company with a meeting on the calendar (once each).
+  const seen = new Set<string>();
+  const untimed = all.filter((e) => {
+    if (effCat(e) !== 'confirmed' || !needsAction(e) || e.ago > 7 * 1440 || e.evId || e.evRemoved || withEvent.has(e.id)) return false;
+    const co = (e.company || e.fromAddr).toLowerCase();
+    if (seen.has(co) || active.some((v) => sameParty(e, v))) return false;
+    seen.add(co);
+    return true;
+  });
   return [...evs.map((ev) => ({ id: ev.id, ev })), ...untimed.map((email) => ({ id: 'mail-' + email.id, email }))];
 }
 
@@ -49,7 +76,7 @@ export function buildBriefing(st: AppState, all: Email[], actionN: number, unrea
   const told = new Set<string>();
   const once = (co: string) => !told.has(co) && !!told.add(co);
   st.events
-    .filter((v) => v.kind === 'interview' && !v.added && v.emailId && v.date >= st.today)
+    .filter((v) => v.kind === 'interview' && !v.added && v.emailId && v.date >= st.today && !active.some((c) => c.date === v.date && c.start < v.end && v.start < c.end))
     .filter((v) => {
       const e = all.find((x) => x.id === v.emailId);
       return e && needsAction(e) && once('cal:' + v.co);
@@ -91,7 +118,7 @@ export function Dashboard() {
   const evAcct = (v: CalEvent) => (many ? eventAccount(st.accts, all, v) : undefined);
 
   const todayEvs = todaysEvents(st.events, st.today);
-  const upcoming = upcomingInterviews(st.events, all, st.today);
+  const upcoming = upcomingInterviews(st.events, all, st.today, st.accts.map((a) => a.addr));
   const briefing = buildBriefing(st, all, actionN, unreadRec, waiting, todayEvs);
 
   const d = dObj(st.today);

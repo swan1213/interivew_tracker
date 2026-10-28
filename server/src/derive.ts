@@ -205,6 +205,8 @@ export function conversationGroups(threads: StoredThread[]): Map<string, StoredT
 const mergeGroup = (group: StoredThread[]): StoredThread =>
   group.length === 1 ? group[0] : { ...group[0], messages: group.flatMap((t) => t.messages) };
 
+const PERSONAL_MAIL = /^(gmail|googlemail|outlook|hotmail|live|yahoo|icloud|me|aol|proton|protonmail)\./i;
+
 /** Whether a pulled busy block is the Google event `eid` (or one occurrence of it). */
 const isGoogleEvent = (busyId: string, acctId: string, eid: string): boolean => {
   const gid = busyId.slice(('gcal-' + acctId + '-').length);
@@ -260,6 +262,26 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
         e.evId = onCal?.id;
         if (!onCal) e.evRemoved = true;
         continue;
+      }
+      // The same meeting already on a calendar (a reminder or confirmation email for it): point at it, nothing to add.
+      // A meeting that day with someone from the sender's company counts too: the calendar has the current time.
+      const ev = cls.event;
+      const dom = (e.fromAddr.split('@')[1] || '').toLowerCase();
+      const company = (b: CalEvent) => !!dom && !PERSONAL_MAIL.test(dom) && [b.organizer || '', ...(b.attendees || [])].some((p) => p.toLowerCase().endsWith('@' + dom));
+      const same = (gcal || []).find((b) => b.date === ev.date && b.start < ev.end && ev.start < b.end)
+        || (ev.date >= windowStart ? (gcal || []).find((b) => b.date === ev.date && company(b)) : undefined);
+      if (same) {
+        e.evId = same.id;
+        if (cls.cat === 'confirmed') {
+          e.needs = false;
+          e.action = 'None. The interview is on your calendar';
+        }
+        continue;
+      }
+      // An interview that has already taken place needs nothing more.
+      if (cls.cat === 'confirmed' && ev.date < windowStart) {
+        e.needs = false;
+        e.action = 'None. The interview has taken place';
       }
       events.push({
         id: 'ev-' + id,
