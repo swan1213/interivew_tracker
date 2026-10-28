@@ -339,3 +339,28 @@ describe('receipts, calendar notices and booked interviews are not requests', ()
     expect(r.mode).toBe('resched');
   });
 });
+
+describe('NiCE: roles and updates under an application subject', () => {
+  const msg = (fromAddr: string, subject: string, bodyText: string): ParsedMessage => ({
+    id: 'm', threadId: 'tm', fromName: 'NiCE', fromAddr, to: 'me@gmail.com', subject, date: '2026-10-28T15:00:00Z',
+    bodyText, atts: [], labelIds: ['INBOX'], messageId: '', inReplyTo: '', references: '', isMine: false,
+  });
+  const c = (fromAddr: string, subject: string, bodyText: string) => classifyHeuristic(msg(fromAddr, subject, bodyText), NOW);
+
+  it('reads the role after "the role of:" and "the following position:"', () => {
+    expect(c('no-reply@eu.greenhouse-mail.io', 'Thank you for applying to NICE', 'Hi Joshua\nThanks for your interest in NiCE and your application for the role of: Senior Partner Success Implementation Engineer.\nSo, what happens next?').role)
+      .toBe('Senior Partner Success Implementation Engineer');
+    expect(c('jordan@nice.com', 'NICE Interview Confirmation', "We're happy to confirm your upcoming interview for the following position: Portfolio Solution Engineer, Actimize.\nInterview details:").role)
+      .toBe('Portfolio Solution Engineer, Actimize');
+  });
+
+  it('a role that is no longer open is a rejection', () => {
+    const r = c('no-reply@nice.com', 'Your Job Application – NiCE', 'Thanks for applying for the following role at NiCE: Software Engineer, AI.\nWe were impressed with your application; however, this role is no longer open.');
+    expect(r.cat).toBe('rejected');
+    expect(r.role).toBe('Software Engineer, AI');
+  });
+
+  it("a recruiter's reschedule note under an application subject is an update", () => {
+    expect(c('jordan@nice.com', 'Regarding your application to NICE', 'Hi Josh, I need to reschedule your interview this morning. I just resent you my calendar link to reschedule.').cat).toBe('status');
+  });
+});

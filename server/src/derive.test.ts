@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSnapshot, calendarKey, conversationGroups } from './derive';
-import type { CalEvent } from '../../src/data/types';
+import { buildSnapshot, calendarKey, cleanRole, conversationGroups, splitByRole } from './derive';
+import type { CalEvent, Email } from '../../src/data/types';
 import type { Classification, StoredAccount } from './types';
 import type { ParsedMessage, StoredThread } from './types';
 
@@ -79,5 +79,27 @@ describe('interviews from calendar invitations', () => {
 
   it('keeps its own event while the calendar has not been synced', () => {
     expect(snap().events.map((v) => v.id)).toEqual(['ev-g1:t1']);
+  });
+});
+
+describe('applications per role', () => {
+  const e = (id: string, role: string, cat: Email['cat'], ago: number, fromAddr = 'no-reply@greenhouse.io') => ({ id, role, cat, ago, fromAddr }) as Email;
+
+  it('a second role at the same company is its own application; the furthest along keeps the company id', () => {
+    const parts = splitByRole([
+      e('a', 'Software Engineer, AI', 'applied', 60000),
+      e('b', 'Portfolio Solution Engineer, Actimize', 'applied', 40000),
+      e('c', 'Portfolio Solution Engineer, Actimize', 'confirmed', 3000, 'jordan@nice.com'),
+      e('d', '', 'status', 2000, 'jordan@nice.com'),
+      e('f', 'Senior Partner Success Implementation Engineer', 'applied', 200),
+    ]);
+    expect([...parts.keys()].sort()).toEqual(['', '--senior-partner-success-implementation-engineer', '--software-engineer-ai']);
+    expect(parts.get('')!.map((x) => x.id).sort()).toEqual(['b', 'c', 'd']);
+  });
+
+  it('the same title in different wording is one application', () => {
+    const parts = splitByRole([e('a', 'Senior Software Engineer, Frontend', 'applied', 9000), e('b', 'Update on your application to the Senior Software Engineer, Frontend opportunity', 'rejected', 100)]);
+    expect([...parts.keys()]).toEqual(['']);
+    expect(cleanRole('Data Engineer at Nordic')).toBe('Data Engineer');
   });
 });

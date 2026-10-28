@@ -144,6 +144,8 @@ export interface Application {
   meetingIds?: string[];
   /** A card made from calendar meetings that match no application. */
   fromCal?: boolean;
+  /** Calendar events this application's emails were matched to; those meetings belong to this card. */
+  evIds?: string[];
 }
 
 export interface CalEvent {

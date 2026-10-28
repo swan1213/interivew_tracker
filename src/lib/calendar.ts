@@ -174,7 +174,7 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
     let best: Application | undefined;
     let top = 0;
     for (const a of apps) {
-      const s = a.emailId && v.emailId === a.emailId ? 10 : v.date < since.get(a.id)! ? 0 : meetingScore(v, a.co);
+      const s = (a.emailId && v.emailId === a.emailId) || a.evIds?.includes(v.id) ? 10 : v.date < since.get(a.id)! ? 0 : meetingScore(v, a.co);
       if (s > top) [best, top] = [a, s];
     }
     if (best) add(byApp, best.id, v);

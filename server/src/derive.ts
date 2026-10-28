@@ -38,6 +38,44 @@ const NOTIF_TITLE: Record<string, string> = {
 };
 const STAGE_OF_CAT: Partial<Record<string, StageKey>> = { applied: 'applied', status: 'review', invite: 'review', avail: 'review', confirmed: 'review', offer: 'offer', rejected: 'closed' };
 
+/** A job title without the subject wording around it: "Update on your application to the X opportunity", "X at Acme". */
+export const cleanRole = (role: string | undefined): string =>
+  (role || '')
+    .replace(/^(?:update on |an update on )?(?:your )?(?:application|interest|applying)(?: in| to| for| with)?(?: the)?\s*[-–:]?\s*/i, '')
+    .replace(/\s+(?:@|at|with)\s+.*$/i, '')
+    .replace(/\s+(?:role|position|opening|opportunity|application update)\b.*$/i, '')
+    .replace(/^R-?\d+\s+|\s*[-–(]\s*(?:RD)?\d+\)?\s*$/i, '')
+    .trim();
+
+const STAGE_RANK: Partial<Record<string, number>> = { applied: 1, status: 2, avail: 3, invite: 3, action: 3, confirmed: 4, offer: 5 };
+
+/**
+ * One company's emails split by the role they name: applying to a second role is a second application.
+ * Roles match when one name extends the other ("Engineer" and "Engineer, Payments"). Emails naming no
+ * role join the role their sender last wrote about, else the furthest-along application, which keeps the
+ * plain company id (so manual moves stay with it); the others get a role suffix.
+ */
+export function splitByRole(list: Email[]): Map<string, Email[]> {
+  const key = (role: string): string => slug(cleanRole(role));
+  const named = list.filter((e) => key(e.role));
+  const keys: string[] = [];
+  for (const r of [...new Set(named.map((e) => key(e.role)))].sort((a, b) => a.length - b.length)) {
+    if (!keys.some((k) => r.startsWith(k))) keys.push(r);
+  }
+  if (keys.length < 2) return new Map([['', list]]);
+  const roleOf = (e: Email): string => keys.find((k) => key(e.role).startsWith(k))!;
+  const parts = new Map<string, Email[]>(keys.map((k) => [k, named.filter((e) => roleOf(e) === k)]));
+  const rank = (es: Email[]): number => Math.max(...es.map((e) => STAGE_RANK[e.cat] || 0));
+  const main = keys.reduce((best, k) => (rank(parts.get(k)!) > rank(parts.get(best)!) || (rank(parts.get(k)!) === rank(parts.get(best)!) && parts.get(k)!.length > parts.get(best)!.length) ? k : best), keys[0]);
+  for (const e of list) {
+    if (key(e.role)) continue;
+    const from = e.fromAddr.toLowerCase();
+    const sender = named.filter((x) => x.fromAddr.toLowerCase() === from && !/no-?reply/.test(from)).sort((a, b) => a.ago - b.ago)[0];
+    parts.get(sender ? roleOf(sender) : main)!.push(e);
+  }
+  return new Map(keys.map((k) => [k === main ? '' : '--' + k, parts.get(k)!]));
+}
+
 export function evStageOf(stageText: string): EvStage {
   const t = stageText.toLowerCase();
   if (/technical|coding|system design/.test(t)) return 'tech';
@@ -303,14 +341,16 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
     }
   }
 
-  // Applications: one per company, stage from the most recent stage-defining email.
-  const groups = new Map<string, Email[]>();
+  // Applications: one per company and role, stage from the most recent stage-defining email.
+  const byCo = new Map<string, Email[]>();
   for (const e of emails) {
     if (!e.company || e.cat === 'auto' || e.cat === 'review' || e.cat === 'other' || e.cat === 'sent' || e.archived) continue;
     const k = slug(e.company);
     if (!k) continue;
-    (groups.get(k) || groups.set(k, []).get(k)!).push(e);
+    (byCo.get(k) || byCo.set(k, []).get(k)!).push(e);
   }
+  const groups = new Map<string, Email[]>();
+  for (const [k, list] of byCo) for (const [suffix, part] of splitByRole(list)) groups.set(k + suffix, part);
   const apps: Application[] = [];
   for (const [k, list] of groups) {
     const byNew = [...list].sort((a, b) => a.ago - b.ago);
@@ -325,7 +365,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
     apps.push({
       id: 'app-' + k,
       co: latest.company,
-      role: byNew.find((e) => e.role)?.role || '',
+      role: cleanRole(byNew.find((e) => e.role)?.role || ''),
       stage,
       applied: shortDate(oldestDate),
       acct: latest.acct,
@@ -334,6 +374,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
       activity,
       action: latest.needs && !latest.done ? latest.action : 'None',
       emailId: latest.id,
+      evIds: [...new Set(list.flatMap((e) => (e.evId ? [e.evId] : [])))],
       notes: '',
       locked: false,
       ai: null,
@@ -343,7 +384,7 @@ export function buildSnapshot(accounts: StoredAccount[], mails: Record<string, M
       ],
     });
   }
-  apps.sort((a, b) => a.co.localeCompare(b.co));
+  apps.sort((a, b) => a.co.localeCompare(b.co) || a.id.length - b.id.length);
 
   const notifs: Notif[] = emails
     .filter((e) => e.needs && !e.done && e.ago <= 14 * 1440 && !e.archived)
