@@ -6,7 +6,7 @@ import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email, ThreadMsg } from '@/data/types';
 import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
 import { activeEvents, isInterviewMeeting, meetingMentions } from '@/lib/calendar';
-import { bookingLink } from '@/lib/links';
+import { selfServe } from '@/lib/links';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
@@ -207,14 +207,15 @@ function detailActions(e: Email, ev: CalEvent | undefined, st: AppState): Detail
   const byReply = e.canReply && !isNoReply(e.fromAddr);
   // Nothing to schedule when the meeting is already on the calendar.
   const booked = e.mode === 'avail' ? bookedMeeting(e, st) : undefined;
-  // An email with its own booking page or video interview link: you go there, there is nothing to reply.
-  const own = c === 'invite' || c === 'avail' || e.mode === 'avail' ? bookingLink(e.body) : null;
+  // An email with its own booking page, video or AI interview: you go there, there is nothing to reply.
+  const own = c === 'invite' || c === 'avail' || e.mode === 'avail' ? selfServe(e.body) : null;
   const open = (url: string) => () => (provider.isDemo ? st.showToast('Demo: this would open ' + url) : window.open(url, '_blank', 'noopener,noreferrer'));
   if (booked) {
     acts.push({ label: 'View on calendar', primary: true, run: () => st.go('cal', { calView: 'week', calDate: booked.date, calSel: booked.id }) });
   } else if (own) {
-    acts.push({ label: own.kind === 'video' ? 'Start video interview' : 'Book a time', primary: true, run: open(own.url) });
-    if (own.kind === 'book') acts.push({ label: 'Open calendar', primary: false, run: () => st.go('cal', { calView: 'week', calDate: st.today }) });
+    // Without a link in the text (a button in the HTML), the email's own button is the way in.
+    if (own.url) acts.push({ label: own.kind === 'video' ? 'Start video interview' : own.kind === 'ai' ? 'Start AI interview' : 'Book a time', primary: true, run: open(own.url) });
+    if (own.kind === 'book') acts.push({ label: 'Open calendar', primary: !own.url, run: () => st.go('cal', { calView: 'week', calDate: st.today }) });
   } else if (e.mode === 'avail' && byReply) {
     acts.push({ label: 'Schedule interview', primary: true, run: () => st.openSched('avail') });
     acts.push({ label: 'Open calendar', primary: false, run: () => st.go('cal', { calView: 'week', calDate: st.today }) });

@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 9;
+export const RULES_VERSION = 10;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -45,7 +45,7 @@ const CAL_CANCELED = /^(?:canceled|cancelled|event (?:canceled|cancelled))/i;
  * Sentences about what may happen later ("if selected, a recruiter will contact you to schedule a screen",
  * "our process typically includes an assessment"). They describe the process; nobody is asking yet.
  */
-const LATER = /\b(if (selected|we|you('re| are) (selected|shortlisted)|your (application|background|skills|experience|qualifications|profile|resume)|there('s| is) a (match|fit)|it's a (match|fit))|should (we|your)|once (we|your)|in the event|(will|'ll) (be in touch|reach out|contact you|get in touch|let you know)|may (include|involve)|could (include|involve)|typically|process (includes?|consists|involves|looks like)|what('s| is| happens) next|what to expect)\b/i;
+const LATER = /\b((in case|if) you('re| are)( not)? (available|interested|qualified|currently)|if (selected|we|you('re| are) (selected|shortlisted)|your (application|background|skills|experience|qualifications|profile|resume)|there('s| is) a (match|fit)|it's a (match|fit))|should (we|your)|once (we|your)|in the event|(will|'ll) (be in touch|reach out|contact you|get in touch|let you know)|may (include|involve)|could (include|involve)|typically|process (includes?|consists|involves|looks like)|what('s| is| happens) next|what to expect)\b/i;
 
 /** "Reschedule" offered as an option (a link, "if you need to reschedule"), not asked for. */
 const RESCHED_OPTION = /^\s*reschedule( (interview|meeting|event|call))?\s*$|\b(if you (need|have|want) to|(if|should) you\b[^.!?]{0,40}\bneed to reschedul\w*|should you need to|need to make changes|(link|here|button|page|click) to (cancel or )?reschedule|to cancel or reschedule|cancel(ling)? or reschedul\w*|reschedul\w* or cancel\w*|reschedule:|reschedule (here|this|your|using|via|through|by|at))\b|\breschedule\s*(<|\(|https?:)/i;
@@ -272,6 +272,8 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   if (newsletter) { cat = 'auto'; conf = 90; }
   // A job alert lists openings; nobody there is asking you anything.
   else if (jobAlert) { cat = 'auto'; conf = 92; }
+  // "You're invited to apply to job X": an advert for an opening, not an interview.
+  else if (/\binvit\w* (you )?to apply\b/i.test(p.subject)) { cat = 'auto'; conf = 88; }
   // A calendar's own notice: the meeting is booked (or canceled); nothing to schedule.
   else if (calNotice) { cat = CAL_CANCELED.test(p.subject) ? 'status' : 'confirmed'; conf = 95; }
   else if (offerHit) { cat = 'offer'; conf = 92; }
