@@ -159,6 +159,20 @@ describe('App', () => {
     expect(labels).toContain('View on calendar');
   });
 
+  it('an invitation with its own booking or video interview link opens that link instead of scheduling', () => {
+    const d = useStore.getState();
+    const withLink = (url: string) => d.emails.map((e) => (e.id === 'e1' ? { ...e, body: e.body + ' Pick a time here: ' + url } : e));
+    reset({ page: 'inbox', selId: 'e1', emails: withLink('https://calendly.com/acme/intro') });
+    mount();
+    let labels = Array.from(container.querySelectorAll('button')).map((b) => b.textContent);
+    expect(labels).not.toContain('Schedule interview');
+    expect(labels).toContain('Book a time');
+    reset({ page: 'inbox', selId: 'e1', emails: withLink('https://app.hireflix.com/abc') });
+    mount();
+    labels = Array.from(container.querySelectorAll('button')).map((b) => b.textContent);
+    expect(labels).toContain('Start video interview');
+  });
+
   it('scheduling flow: pick slots, generate, confirm send', () => {
     reset({ page: 'inbox', selId: 'e1' });
     mount();
