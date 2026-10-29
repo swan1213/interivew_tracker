@@ -225,16 +225,21 @@ async function dropDeleted(api: GmailApi, threads: Record<string, StoredThread>,
   return gone.size;
 }
 
-/** Update stored labels right away so the next snapshot reflects a read/star/archive action. */
-export async function updateStoredLabels(accountId: string, threadId: string, add: string[], remove: string[]): Promise<void> {
-  const mail = await readMail(accountId);
-  const t = mail.threads[threadId];
-  if (!t) return;
-  for (const m of t.messages) {
+/** Add and remove labels on every message of a stored thread (in memory). */
+export function applyLabels(t: StoredThread | undefined, add: string[], remove: string[]): void {
+  for (const m of t?.messages || []) {
     const set = new Set(m.labelIds);
     add.forEach((l) => set.add(l));
     remove.forEach((l) => set.delete(l));
     m.labelIds = Array.from(set);
   }
+}
+
+/** Update stored labels right away so the next snapshot reflects a read/star/archive action. */
+export async function updateStoredLabels(accountId: string, threadId: string, add: string[], remove: string[]): Promise<void> {
+  const mail = await readMail(accountId);
+  const t = mail.threads[threadId];
+  if (!t) return;
+  applyLabels(t, add, remove);
   await writeMail(accountId, mail);
 }

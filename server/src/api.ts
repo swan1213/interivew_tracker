@@ -14,7 +14,7 @@ import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
 import { mailFile, readAccounts, readMail, removeKey, updateAccounts, writeMail } from './store';
-import { syncAccount, updateStoredLabels } from './sync';
+import { applyLabels, syncAccount, updateStoredLabels } from './sync';
 import type { CalEvent } from '../../src/data/types';
 import type { StoredAccount } from './types';
 
@@ -320,6 +320,51 @@ export function createApi(): express.Express {
   );
 
   labelRoute('read', () => ({ add: [], remove: ['UNREAD'] }));
+
+  /**
+   * Mark many conversations read or unread at once (the inbox's selection). Each account's mail is
+   * read and written once, so a page of changes can't overwrite each other the way parallel calls would.
+   */
+  app.post(
+    '/mail/read-state',
+    requireRole('member'),
+    wrap(async (req, res) => {
+      const { ids, unread } = (req.body || {}) as { ids?: unknown; unread?: unknown };
+      if (!Array.isArray(ids) || !ids.every((x) => typeof x === 'string') || ids.length > 500 || typeof unread !== 'boolean') {
+        res.status(400).json({ error: 'Send ids (up to 500) and unread (true or false).' });
+        return;
+      }
+      const add = unread ? ['UNREAD'] : [];
+      const remove = unread ? [] : ['UNREAD'];
+      const byAcct = new Map<string, string[]>();
+      for (const id of ids as string[]) {
+        const { acctId, threadId } = splitId(id);
+        (byAcct.get(acctId) || byAcct.set(acctId, []).get(acctId)!).push(threadId);
+      }
+      const accts = await readAccounts();
+      let changed = 0;
+      for (const [acctId, threadIds] of byAcct) {
+        const a = accts.find((x) => x.id === acctId);
+        if (!a) continue;
+        const mail = await readMail(a.id);
+        const groups = conversationGroups(Object.values(mail.threads));
+        const api = gmailFor(a);
+        try {
+          for (const threadId of threadIds) {
+            for (const id of (groups.get(threadId) || [mail.threads[threadId]]).filter(Boolean).map((t) => t.id)) {
+              await api.modifyThread(id, add, remove);
+              applyLabels(mail.threads[id], add, remove);
+            }
+            changed++;
+          }
+        } finally {
+          // Keep what the mailbox already accepted, even when a later conversation fails.
+          await writeMail(a.id, mail);
+        }
+      }
+      res.json({ ok: true, changed });
+    }),
+  );
   labelRoute('star', (b) => (b.on ? { add: ['STARRED'], remove: [] } : { add: [], remove: ['STARRED'] }));
   labelRoute('archive', () => ({ add: [], remove: ['INBOX'] }));
 

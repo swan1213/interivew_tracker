@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useClickOutside } from '@/app/hooks';
 import { useStore, type AppState } from '@/store/store';
 import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
@@ -51,6 +52,14 @@ function MessageList({ rows }: { rows: Email[] }) {
   };
   const range = rows.length ? num(first + 1) + '–' + num(first + shown.length) + ' of ' + num(rows.length) : 'No conversations';
 
+  // Checked conversations, for this list and page only (like Gmail); rows that leave the page drop out.
+  const selKey = listKey + '#' + page;
+  const [checked, setChecked] = useState({ key: selKey, ids: new Set<string>() });
+  const picked = checked.key === selKey ? shown.filter((e) => checked.ids.has(e.id)) : [];
+  const pick = (ids: string[]) => setChecked({ key: selKey, ids: new Set(ids) });
+  const toggle = (id: string) => pick(picked.some((e) => e.id === id) ? picked.filter((e) => e.id !== id).map((e) => e.id) : [...picked.map((e) => e.id), id]);
+  const ids = (es: Email[]) => es.map((e) => e.id);
+
   return (
     <section className="lcol" aria-label="Message list">
       <div className="lhead">
@@ -75,6 +84,14 @@ function MessageList({ rows }: { rows: Email[] }) {
             <Icon name="refresh" sm />
           </button>
         </h1>
+        {shown.length > 0 && (
+          <SelectBar
+            shown={shown}
+            picked={picked}
+            pick={(es) => pick(ids(es))}
+            mark={(read) => st.setRead(ids(picked), read)}
+          />
+        )}
         {narrowed.length > 0 && (
           <div className="narrow">
             <span>Filtered: {narrowed.join(', ')}</span>
@@ -93,7 +110,7 @@ function MessageList({ rows }: { rows: Email[] }) {
           </>
         )}
         {shown.map((e) => (
-          <EmailRow key={e.id} e={e} selected={e.id === st.selId} />
+          <EmailRow key={e.id} e={e} selected={e.id === st.selId} checked={picked.includes(e)} onCheck={() => toggle(e.id)} />
         ))}
         {pages > 1 && (
           <div className="lfoot">
@@ -142,7 +159,68 @@ function MessageList({ rows }: { rows: Email[] }) {
   );
 }
 
-function EmailRow({ e, selected }: { e: Email; selected: boolean }) {
+/** Select all, none, read or unread conversations on the page, then mark the selection read or unread. */
+function SelectBar({ shown, picked, pick, mark }: { shown: Email[]; picked: Email[]; pick: (es: Email[]) => void; mark: (read: boolean) => void }) {
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const menuRef = useClickOutside<HTMLDivElement>(open, close);
+  const boxRef = useRef<HTMLInputElement>(null);
+  const all = picked.length === shown.length;
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.indeterminate = picked.length > 0 && !all;
+  }, [picked.length, all]);
+  const choices: [string, () => Email[]][] = [
+    ['All', () => shown],
+    ['None', () => []],
+    ['Read', () => shown.filter((e) => !e.unread)],
+    ['Unread', () => shown.filter((e) => e.unread)],
+  ];
+  return (
+    <div className="selbar">
+      <input ref={boxRef} type="checkbox" className="ck" checked={picked.length > 0 && all} onChange={() => pick(picked.length ? [] : shown)} aria-label="Select all conversations on this page" />
+      <div className="selpick" ref={menuRef}>
+        <button type="button" className="ib" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label="Select by read state" title="Select">
+          <Icon name="chevD" sm />
+        </button>
+        {open && (
+          <div className="acmenu selmenu" role="menu">
+            {choices.map(([label, of]) => (
+              <button
+                key={label}
+                type="button"
+                role="menuitem"
+                className="acitem"
+                onClick={() => {
+                  pick(of());
+                  close();
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {picked.length > 0 ? (
+        <>
+          <span className="mut selcount">{num(picked.length)} selected</span>
+          <button type="button" className="btn sm ghost" onClick={() => mark(true)} disabled={!picked.some((e) => e.unread)}>
+            <Icon name="mailOpen" sm />
+            Mark as read
+          </button>
+          <button type="button" className="btn sm ghost" onClick={() => mark(false)} disabled={picked.every((e) => e.unread)}>
+            <Icon name="mail" sm />
+            Mark as unread
+          </button>
+        </>
+      ) : (
+        <span className="mut selcount">Select to mark read or unread</span>
+      )}
+    </div>
+  );
+}
+
+function EmailRow({ e, selected, checked, onCheck }: { e: Email; selected: boolean; checked: boolean; onCheck: () => void }) {
   const openEmail = useStore((s) => s.openEmail);
   const toggleStar = useStore((s) => s.toggleStar);
   const accts = useStore((s) => s.accts);
@@ -151,7 +229,8 @@ function EmailRow({ e, selected }: { e: Email; selected: boolean }) {
   const who = participants(e);
   const lead = senderName(e.fromName, e.fromAddr, e.company);
   return (
-    <div className={cx('er', e.unread && 'unread', selected && 'sel2')}>
+    <div className={cx('er', e.unread && 'unread', selected && 'sel2', checked && 'checked')}>
+      <input type="checkbox" className="ck" checked={checked} onChange={onCheck} aria-label={'Select ' + who + ', ' + (e.subject || '(no subject)')} />
       <button
         type="button"
         className="erb"

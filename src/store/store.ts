@@ -122,6 +122,8 @@ export interface Actions {
   openView: (view: InboxView) => void;
   openEmail: (id: string) => void;
   toggleStar: (id: string) => void;
+  /** Mark conversations read or unread, here and in the mailbox. */
+  setRead: (ids: string[], read: boolean) => void;
   archive: (id: string, nextId: string) => void;
   reclassify: (cat: Cat) => void;
   toggleIns: () => void;
@@ -352,6 +354,18 @@ export const useStore = create<AppState>()((set, get) => {
         emails: s.emails.map((x) => (x.id === id ? { ...x, unread: false } : x)),
       });
       if (e?.unread) void provider.markRead?.(id).catch(() => undefined);
+    },
+    setRead: (ids, read) => {
+      // Only conversations whose state changes; the list updates now and goes back if the mailbox refuses.
+      const todo = new Set(get().emails.filter((e) => ids.includes(e.id) && e.unread === read).map((e) => e.id));
+      if (!todo.size) return;
+      const flip = (unread: boolean) => set((s) => ({ emails: s.emails.map((e) => (todo.has(e.id) ? { ...e, unread } : e)) }));
+      flip(!read);
+      showToast((todo.size === 1 ? '1 conversation' : todo.size + ' conversations') + ' marked as ' + (read ? 'read' : 'unread'));
+      void provider.setRead?.([...todo], read).catch(() => {
+        flip(read);
+        showToast('Could not mark as ' + (read ? 'read' : 'unread') + ' in your mailbox.');
+      });
     },
     toggleStar: (id) => {
       const e = emailOf(get(), id);

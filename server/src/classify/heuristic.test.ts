@@ -314,6 +314,36 @@ describe('receipts, calendar notices and booked interviews are not requests', ()
     expect(ask.cat).toBe('avail');
   });
 
+  it('StreamNative: the company and role survive a department signature, a sign-off name and stage wording', () => {
+    const sig = '\n\nBest regards,\n\nRiva Dunn\n\nSr Manager, Ppl & Biz Ops\n\nSHRM-CP\n\ne: riva.dunn@streamnative.io\n\np: 628-222-5456';
+    const from = (fromAddr: string, fromName: string, subject: string, bodyText: string) => classifyHeuristic({ ...msg(fromAddr, subject, bodyText), fromName }, NOW);
+    const hm = from('riva.dunn@streamnative.io', 'Riva Dunn', 'StreamNative | Hiring Manager Interview, Availability Request',
+      "We're excited to move you forward to the Hiring Manager interview stage for the Sr Software Engineer, Platform role. Please share your availability for next week here." + sig);
+    expect(hm.cat).toBe('avail');
+    expect(hm.company).toBe('StreamNative');
+    expect(hm.role).toBe('Sr Software Engineer, Platform');
+    const reminder = from('no-reply@eu.greenhouse-mail.io', 'no-reply', 'Interview reminder: Sr Software Engineer, Platform at StreamNative',
+      'Reminder: Your interview with StreamNative for the Sr Software Engineer, Platform position is coming up.\n\nInterviewers: Riva Dunn\n\nThanks,\nRiva');
+    expect(reminder.company).toBe('StreamNative');
+    expect(reminder.role).toBe('Sr Software Engineer, Platform');
+    // A company signing after the sign-off is still the company.
+    expect(from('no-reply@us.greenhouse-mail.io', 'no-reply', 'Thank you for applying', 'We received your application.\nRegards,\nOnBoard').company).toBe('OnBoard');
+    // Titles that contain "to the" stay whole.
+    expect(from('jobs@filevine.com', 'Filevine', 'Thanks for your interest in Filevine', 'Thank you for applying to the Executive Assistant to the Chief Technology Officer position.').role).toBe('Executive Assistant to the Chief Technology Officer');
+  });
+
+  it('sender names: the company beside a person, a team, a service or a role', () => {
+    const co = (fromName: string, fromAddr = 'x@mailer.example') => classifyHeuristic({ ...msg(fromAddr, 'Hello', 'Thanks for your application.'), fromName }, NOW).company;
+    expect(co('Kathleen Aponte - Virtasant')).toBe('Virtasant');
+    expect(co('Ali from HiringCafe')).toBe('HiringCafe');
+    expect(co('Parker at Mitchell Martin')).toBe('Mitchell Martin');
+    expect(co('HR Team - Empower')).toBe('Empower');
+    expect(co('Flosum via Hireflix')).toBe('Flosum');
+    expect(co('Unifonic/Senior Frontend Engineer')).toBe('Unifonic');
+    expect(co('ClickUp No Reply')).toBe('ClickUp');
+    expect(co('noventive - IP securely protected', 'recruiting@noventive.com')).toBe('Noventive');
+  });
+
   it('a receipt without receipt wording in the subject is still a receipt', () => {
     const r = c('no-reply@ashbyhq.com', 'Your FutureFit AI app is in good hands, Gregory!',
       "Thanks for applying for the Software Engineer role at FutureFit AI. We're excited to meet you! Our team will review yours for initial fit as soon as we can. We're committed to letting you know whether there's a fit either way.");

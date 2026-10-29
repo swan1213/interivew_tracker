@@ -90,6 +90,10 @@ export class ApiMailProvider implements MailProvider {
     await call('/api/mail/' + enc(id) + '/read', 'POST', {});
   }
 
+  async setRead(ids: string[], read: boolean): Promise<void> {
+    await call('/api/mail/read-state', 'POST', { ids, unread: !read });
+  }
+
   async setStar(id: string, on: boolean): Promise<void> {
     await call('/api/mail/' + enc(id) + '/star', 'POST', { on });
   }

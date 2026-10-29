@@ -127,6 +127,49 @@ describe('App', () => {
     expect(range()).toBe('1–50 of 120');
   });
 
+  it('selects read or unread conversations and marks the selection read or unread', () => {
+    const base = buildDemoData().emails[0];
+    const mail = Array.from({ length: 6 }, (_, i) => ({ ...base, id: 'm' + i, subject: 'Message ' + i, unread: i < 2 }));
+    reset({ page: 'inbox', selId: '', emails: mail });
+    mount();
+    const boxes = () => [...container.querySelectorAll<HTMLInputElement>('.er .ck')];
+    const unread = () => useStore.getState().emails.filter((e) => e.unread).map((e) => e.id);
+    const choose = (label: string) => {
+      click('[aria-label="Select by read state"]');
+      const item = [...container.querySelectorAll<HTMLButtonElement>('.selmenu [role="menuitem"]')].find((b) => b.textContent === label)!;
+      act(() => item.click());
+    };
+    const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('.selbar .btn')].find((b) => b.textContent?.includes(label))!;
+
+    // Nothing selected: no mark buttons yet.
+    expect(button('Mark as read')).toBeUndefined();
+    choose('Unread');
+    expect(boxes().map((b) => b.checked)).toEqual([true, true, false, false, false, false]);
+    expect(container.querySelector('.selcount')?.textContent).toBe('2 selected');
+    expect(button('Mark as unread').disabled).toBe(true);
+    act(() => button('Mark as read').click());
+    expect(unread()).toEqual([]);
+
+    // Read ones, by hand: check two rows, then mark them unread.
+    choose('None');
+    act(() => boxes()[3].click());
+    act(() => boxes()[4].click());
+    act(() => button('Mark as unread').click());
+    expect(unread()).toEqual(['m3', 'm4']);
+    // Checking a row doesn't open it.
+    expect(useStore.getState().selId).toBe('');
+
+    // The header box clears a partial selection (like Gmail), then selects the whole page, then clears it.
+    const all = container.querySelector<HTMLInputElement>('.selbar > .ck')!;
+    expect(all.indeterminate).toBe(true);
+    act(() => all.click());
+    expect(boxes().some((b) => b.checked)).toBe(false);
+    act(() => all.click());
+    expect(boxes().every((b) => b.checked)).toBe(true);
+    act(() => all.click());
+    expect(boxes().some((b) => b.checked)).toBe(false);
+  });
+
   it('a message with an HTML version is shown as its sender laid it out, in a sandboxed frame', async () => {
     const demo = provider;
     const asked: string[] = [];

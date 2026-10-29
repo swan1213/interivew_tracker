@@ -359,6 +359,16 @@ textarea.inp{height:auto;padding:8px 9px;resize:vertical;min-height:70px;line-he
 .er{padding:0;align-items:stretch}
 .erb{display:flex;gap:12px;flex:1;min-width:0;text-align:left;padding:11px 14px 11px 16px}
 .er .starb{position:absolute;right:10px;bottom:9px}
+.ck{width:15px;height:15px;margin:0;flex:none;accent-color:var(--ac);cursor:pointer}
+.er .ck{margin:20px 0 0 14px}
+.er .ck+.erb{padding-left:10px}
+.er.checked:not(.sel2){background:color-mix(in srgb,var(--acs) 60%,var(--sf))}
+.selbar{display:flex;align-items:center;gap:4px;min-height:30px;padding-left:4px;flex-wrap:wrap}
+.selpick{position:relative}
+.selbar .ib{width:24px;height:24px}
+.selmenu{width:140px;left:-20px}
+.selcount{margin:0 6px 0 2px}
+.selbar .btn:disabled{opacity:.4;cursor:default}
 .kc{cursor:grab;position:relative}
 .kcm{display:flex;flex-direction:column;gap:7px;text-align:left;width:100%}
 .hrs{background-image:repeating-linear-gradient(to bottom,transparent 0 51px,var(--bd) 51px 52px);position:relative}

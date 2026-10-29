@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 12;
+export const RULES_VERSION = 13;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -73,11 +73,18 @@ const ORG_WORDS = /^(recruiting|recruitment|talent|careers?|team|hiring|people|h
 const TITLE_WORD = /\b(engineer|developer|manager|designer|analyst|scientist|architect|lead|director|intern|specialist|consultant|sde|swe|researcher|administrator|technician|coordinator|associate|executive|officer|head of|principal|staff|senior|junior)\b/i;
 const JOB_WORDS = /\b(interview|recruit\w*|application|applied|applying|position|role|roles|hiring|candidate|resume|résumé|cv|offer|assessment|talent|career|careers|job|jobs|opening|opportunity|screening|onboarding|take-home|hiring manager|referral)\b/i;
 const CLOSING = /^(best|best regards|kind regards|regards|warm regards|thanks|thank you|many thanks|sincerely|cheers|congratulations|talk soon|all the best)[,!.]?\s*$/i;
-const PERSON = /^[A-Z][a-z'’-]+(?: [A-Z][a-z'’-]+){1,2}$/;
+const PERSON = /^\p{Lu}[\p{Ll}'’-]+(?: \p{Lu}[\p{Ll}'’-]+){1,2}$/u;
 /** Words that mark a capitalized phrase as an organization rather than a person. */
-const COMPANY_WORDS = /^(robotics|cloud|labs?|systems?|technolog(?:y|ies)|tech|software|solutions?|health|healthcare|bank|data|ai|inc\.?|corp\.?|co\.?|llc|ltd\.?|group|team|talent|recruiting|recruitment|careers?|hiring|people|hr|acquisition|partners?|platform|alerts?|university|networks?|digital|media|studios?|games|capital|ventures?|energy|financial|finance|insurance|logistics|security|analytics|consulting|services|global|international|holdings|industries|engineering|dynamics|computing|mobile|interactive|foods?|retail|automotive|motors|airlines|pharma|biotech|therapeutics|sciences?|notifications?|updates?|support|jobs?|staffing|agency|associates|enterprises?|innovations?|intelligence|payments?|commerce|works|design|creative|marketing)$/i;
+const COMPANY_WORDS = /^(robotics|cloud|labs?|systems?|technolog(?:y|ies)|tech|software|solutions?|health|healthcare|bank|data|ai|inc\.?|corp\.?|co\.?|llc|ltd\.?|gmbh|ag|plc|bv|sas|srl|group|team|talent|recruiting|recruitment|careers?|hiring|people|hr|acquisition|partners?|platform|alerts?|university|networks?|digital|media|studios?|games|capital|ventures?|energy|financial|finance|insurance|logistics|security|analytics|consulting|services|global|international|holdings|industries|engineering|dynamics|computing|mobile|interactive|foods?|retail|automotive|motors|airlines|pharma|biotech|therapeutics|sciences?|notifications?|updates?|support|jobs?|staffing|agency|associates|enterprises?|innovations?|intelligence|payments?|commerce|works|design|creative|marketing)$/i;
 /** Lines like "Talent Partner, Datadog": the part before the comma must read as a job title. */
 const SIG_TITLE = /(recruit|talent|partner|manager|director|head|lead|coordinator|specialist|acquisition|sourc|people|\bhr\b|human resources|engineer|officer|president|founder|ceo|cto|coo|hiring|associate|consultant|analyst|executive|assistant)/i;
+/** A department after the title ("Sr Manager, Ppl & Biz Ops"), not the company. */
+const DEPARTMENT = /\b(ops|operations|biz|business|ppl|people|hr|human resources|department|dept|recruiting|talent acquisition|finance|legal|engineering|sales|marketing)\b/i;
+/** Certification lines in a signature ("SHRM-CP", "PHR, SHRM-SCP"). */
+const CREDENTIALS = /^((shrm-s?cp|a?s?phr|gphr|cir|cdr|cpa|pmp|mba|phd|ms|ma|bs|ba)\s*[,|/]?\s*)+$/i;
+/** A subject that opens with the company: "StreamNative | Recruiter Screen, Availability Request". */
+const SUBJECT_COMPANY = /^([A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,2})\s*\|/;
+const SUBJECT_NOT_COMPANY = /\b(interview|invitation|invite|re|fwd?|application|availability|reminder|confirmation|screen|call|offer|update|remote|hybrid|onsite|urgent|hiring|new|job|role|contract)\b/i;
 
 export const isPerson = (s: string): boolean => {
   const t = (s || '').trim();
@@ -102,13 +109,19 @@ function cleanOrg(s: string): string {
 export function extractCompany(p: ParsedMessage, body: string): string {
   const lines = body.split('\n').map((l) => l.trim()).filter(Boolean);
   const tail = lines.slice(-4);
+  // A first name signed alone ("Thanks,\nRiva") is not a company: it is the sender's, or the email names
+  // that person in full ("Interviewers: Riva Dunn"). "Regards,\nOnBoard" is the company signing.
+  const senderNames = p.fromName.toLowerCase().split(/\s+/).filter(Boolean);
+  const signedName = (line: string) =>
+    senderNames.includes(line.toLowerCase()) ||
+    (/^[A-Z][a-z'’-]+$/.test(line) && (body.match(new RegExp('\\b' + line + ' [A-Z][a-z\'’-]+\\b', 'g')) || []).some(isPerson));
   for (const raw of tail) {
     const line = raw.replace(/\(.*?\)/g, '').trim();
-    if (!line || /@|https?:|\.com\b/i.test(line) || isPerson(line) || CLOSING.test(line)) continue;
+    if (!line || /@|https?:|\.com\b/i.test(line) || isPerson(line) || CLOSING.test(line) || CREDENTIALS.test(line) || signedName(line)) continue;
     const comma = line.match(/^([A-Z][^,:]{2,40}),\s*([A-Z][\w&.'’ -]{1,40})$/);
     if (comma && SIG_TITLE.test(comma[1])) {
       const c = cleanOrg(comma[2]);
-      if (c && !TITLE_WORD.test(c)) return c;
+      if (c && !TITLE_WORD.test(c) && !DEPARTMENT.test(c)) return c;
     }
     const atm = line.match(/\b(?:at|@)\s+([A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,2})$/);
     if (atm) return cleanOrg(atm[1]);
@@ -117,12 +130,37 @@ export function extractCompany(p: ParsedMessage, body: string): string {
       if (c.length >= 3) return c;
     }
   }
-  if (!isPerson(p.fromName) && /^[A-Z]/.test(p.fromName) && !/@/.test(p.fromName)) {
-    const c = cleanOrg(p.fromName);
-    if (c.length >= 3 && !/^(hi|hello|team)$/i.test(c)) return c;
+  // "Kathleen Aponte - Virtasant", "Ali from HiringCafe", "HR Team - Empower": the company comes after the person or team;
+  // "Flosum via Hireflix": before the service that sent it. The part that is neither a person nor a team wins.
+  // "Parker at Mitchell Martin": after "at" / "from" is the company, even one named like a person.
+  // "Unifonic/Senior Frontend Engineer" (Recruitee): the company, then the role.
+  const from = p.fromName
+    .split(/\s+via\s+/)[0]
+    .replace(/[\s-]*[[(]?\b(do.?not.?reply|no.?reply|workday)\b[\])]?/gi, '');
+  const sender = from
+    .replace(/\/(?=.*(\b(open application)\b|[A-Z][\w-]* (engineer|developer|designer|manager|lead|architect)))[^/]*$/i, '')
+    .split(':')[0]
+    .trim();
+  const at = sender.match(/^\S+\s+(?:at|from)\s+(.+)$/);
+  // The part the sending domain spells ("noventive - IP securely protected" from noventive.com) comes first.
+  const domain = (p.fromAddr.split('@')[1] || '').toLowerCase();
+  const spelled = (s: string) => { const k = s.toLowerCase().replace(/[^a-z0-9]/g, ''); return k.length >= 3 && domain.includes(k); };
+  const parts = at ? [at[1]] : sender.split(/\s+(?:-|–|\||from|at)\s+/).reverse().sort((a, b) => +spelled(b) - +spelled(a));
+  // A sender that is one company ("Ancient Gaming/Head of Frontend Engineering") stays one even if it reads like a name once trimmed.
+  const named = at || (parts.length === 1 && !isPerson(from.trim()));
+  for (const part of parts) {
+    if ((!named && isPerson(part)) || !/^[a-z]/i.test(part) || /@/.test(part)) continue;
+    // Beside a company, a "/" or title part is the job ("Kruger NearShore LLC - Rekluti/DESARROLLADOR FRONTEND").
+    if (parts.length > 1 && (/\//.test(part) || TITLE_WORD.test(part))) continue;
+    let c = cleanOrg(part);
+    if (spelled(c)) c = c.charAt(0).toUpperCase() + c.slice(1);
+    if (c.length >= 3 && /^[A-Z]/.test(c) && !/^(hi|hello|team|the)$/i.test(c) && !c.split(/\s+/).every((w) => ORG_WORDS.test(w))) return c;
   }
-  const subj = p.subject.match(/\b(?:at|to|with|from|join)\s+([A-Z][\w&'’-]+(?:\s+[A-Z][\w&'’-]+)?)/);
-  if (subj) return cleanOrg(subj[1]);
+  const lead = p.subject.match(SUBJECT_COMPANY);
+  if (lead && !SUBJECT_NOT_COMPANY.test(lead[1]) && !TITLE_WORD.test(lead[1])) return cleanOrg(lead[1]);
+  // "Intro Call with Taylor Happley at Playlist": the person is not the company.
+  const subj = [...p.subject.matchAll(/\b(at|to|with|from|join)\s+([A-Z][\w&'’-]+(?:\s+[A-Z][\w&'’-]+)?)/g)].find((m) => m[1] !== 'with' || !isPerson(m[2]));
+  if (subj) return cleanOrg(subj[2]);
   const bodyM = body.match(/\b(?:applying to|interest in|application (?:to|with)|position at|role at|team at|opportunity at|join(?:ing)?|welcome to|offer from)\s+([A-Z][\w&'’-]+(?:\s+[A-Z][\w&'’-]+)?)/);
   if (bodyM) return cleanOrg(bodyM[1]);
   const dom = p.fromAddr.split('@')[1] || '';
@@ -131,9 +169,20 @@ export function extractCompany(p: ParsedMessage, body: string): string {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+/**
+ * A role as written, without what led up to it or the company after it: "the Hiring Manager interview stage
+ * for the Sr Software Engineer, Platform" and "Sr Software Engineer, Platform at StreamNative" are the same role.
+ */
+const tidyRole = (s: string): string => {
+  const t = s.replace(/\s+/g, ' ').replace(/\s+at\s+[A-Z][\w&.'’ -]*$/, '').trim();
+  const m = t.match(/^(.*)\b(?:for|in|to) (?:the|our|an?) (?=[A-Z])/);
+  // Only process words lead up to it; "Executive Assistant to the Chief Technology Officer" is one title.
+  return m && /\b(interview|stage|round|step|application|update)\b/i.test(m[1]) && TITLE_WORD.test(t.slice(m[0].length)) ? t.slice(m[0].length) : t;
+};
+
 export function extractRole(p: ParsedMessage, body: string): string {
   const colon = p.subject.match(/:\s*([A-Z][^\n]{3,80})$/);
-  if (colon && TITLE_WORD.test(colon[1]) && !/\b(confirmed|interview|invitation)\b/i.test(colon[1])) return colon[1].trim();
+  if (colon && TITLE_WORD.test(colon[1]) && !/\b(confirmed|interview|invitation)\b/i.test(colon[1])) return tidyRole(colon[1]);
   const subjFor = p.subject.match(/\bfor (?:the |an? |our )?([A-Z][^\n:]{3,80}?)(?:\s+(?:role|position|opening|opportunity))?\s*$/);
   if (subjFor && TITLE_WORD.test(subjFor[1])) return subjFor[1].trim();
   const pats = [
@@ -146,7 +195,7 @@ export function extractRole(p: ParsedMessage, body: string): string {
   ];
   for (const re of pats) {
     const m = body.match(re);
-    if (m && TITLE_WORD.test(m[1])) return m[1].replace(/\s+/g, ' ').trim();
+    if (m && TITLE_WORD.test(m[1])) return tidyRole(m[1]);
   }
   return '';
 }
