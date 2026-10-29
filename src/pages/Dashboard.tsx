@@ -131,7 +131,7 @@ export function Dashboard() {
   const kpis: Kpi[] = [
     { label: 'Connected accounts', icon: 'plug', n: st.accts.length, go: () => st.go('accounts') },
     { label: 'Total applications', icon: 'kanban', n: st.apps.length, go: () => st.go('track') },
-    { label: 'Unread recruitment emails', icon: 'mail', n: unreadRec, go: () => st.go('inbox', { view: 'inbox', unreadOnly: true, savedKey: '' }) },
+    { label: 'Unread recruitment emails', icon: 'mail', n: unreadRec, go: () => st.go('inbox', { view: 'inbox', unreadOnly: true, readOnly: false, savedKey: '' }) },
     { label: 'Action required', icon: 'bolt', n: actionN, hot: true, go: () => st.openView('action') },
     { label: 'Upcoming interviews', icon: 'video', n: upcoming.length, go: () => st.go('cal', { calView: 'agenda', calDate: st.today }) },
     { label: 'Availability requests', icon: 'clock', n: waiting, hot: true, go: () => st.openView('avail') },

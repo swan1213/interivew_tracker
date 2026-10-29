@@ -96,6 +96,8 @@ export interface InboxFilters {
   nowHour: number;
   ivFilter: 'all' | IvStatus;
   unreadOnly: boolean;
+  /** Only conversations already read (the inbox's Read filter). */
+  readOnly?: boolean;
   actionOnly: boolean;
   savedKey: string;
   q: string;
@@ -158,6 +160,7 @@ export function filterEmails(all: Email[], f: InboxFilters, apps: Application[])
   }
   if (f.ivFilter !== 'all') list = list.filter((e) => e.ivStatus === f.ivFilter);
   if (f.unreadOnly) list = list.filter((e) => e.unread);
+  if (f.readOnly) list = list.filter((e) => !e.unread);
   if (f.actionOnly) list = list.filter(needsAction);
   if (f.savedKey) list = list.filter((e) => matchSaved(e, f.savedKey));
   if (q) list = list.filter((e) => searchText(e, apps).includes(q));

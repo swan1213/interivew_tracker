@@ -54,6 +54,7 @@ export interface StateFields extends Data {
   ivFilter: 'all' | IvStatus;
   sortKey: SortKey;
   unreadOnly: boolean;
+  readOnly: boolean;
   actionOnly: boolean;
   savedKey: string;
   q: string;
@@ -246,7 +247,7 @@ function initialFields(): StateFields {
     today: clock.today, nowHour: clock.nowHour,
     page: canSee(role, route.page) ? route.page : homePage(role), view: route.view ?? 'inbox',
     selId: provider.isDemo ? 'e1' : data.emails[0]?.id ?? '', acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', ivFilter: 'all',
-    sortKey: 'newest', unreadOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
+    sortKey: 'newest', unreadOnly: false, readOnly: false, actionOnly: false, savedKey: '', q: '', insOpen: true,
     tone: prefs.tone ?? 'professional', variant: 0, mods: NO_MODS, aiDraft: '', chosen: [],
     compOpen: false, compMode: 'reply', compFrom: data.accts[0]?.id ?? '', compTo: '', compText: '', sendOpen: false,
     schedOpen: false, schedMode: 'avail', schedSel: [], addCalOpen: false, addCalEv: '', cfOpen: false, cf: NO_CF, addAcctOpen: false,
@@ -389,7 +390,7 @@ export const useStore = create<AppState>()((set, get) => {
       set((s) =>
         s.emails.length === 0
           ? { emails: buildDemoData().emails, selId: 'e1' }
-          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', ivFilter: 'all', unreadOnly: false, actionOnly: false, savedKey: '', q: '' },
+          : { acctFilter: 'all', catFilter: 'all', priFilter: 'all', coFilter: 'all', peer: '', rangeFilter: 'all', rangeFrom: '', rangeTo: '', ivFilter: 'all', unreadOnly: false, readOnly: false, actionOnly: false, savedKey: '', q: '' },
       ),
     setSearch: (q) => set({ q, page: 'inbox', view: 'inbox', savedKey: '' }),
     showPeer: (addr) => set({ peer: addr.trim().toLowerCase(), page: 'inbox', view: 'inbox', savedKey: '', q: '' }),

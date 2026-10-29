@@ -363,12 +363,17 @@ textarea.inp{height:auto;padding:8px 9px;resize:vertical;min-height:70px;line-he
 .er .ck{margin:20px 0 0 14px}
 .er .ck+.erb{padding-left:10px}
 .er.checked:not(.sel2){background:color-mix(in srgb,var(--acs) 60%,var(--sf))}
-.selbar{display:flex;align-items:center;gap:4px;min-height:30px;padding-left:4px;flex-wrap:wrap}
-.selpick{position:relative}
-.selbar .ib{width:24px;height:24px}
-.selmenu{width:140px;left:-20px}
-.selcount{margin:0 6px 0 2px}
-.selbar .btn:disabled{opacity:.4;cursor:default}
+.selbar{display:flex;align-items:center;gap:2px;height:28px;margin-left:-2px}
+.selpick{position:relative;display:inline-flex;align-items:center;gap:2px}
+.selchev{width:16px;height:24px;display:grid;place-items:center;color:var(--tx3);border-radius:4px}
+.selchev:hover:not(:disabled){background:var(--sf2);color:var(--tx)}
+.selchev:disabled,.selbar .ck:disabled{opacity:.4;cursor:default}
+.selmenu{width:130px;left:-4px}
+.selcount{font-size:12px;font-weight:550;color:var(--tx2);margin:0 2px 0 8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.selcount span{font-weight:450;color:var(--tx3)}
+.lhead .selbar .ib{width:28px;height:28px}
+.selbar .seg{flex:none}
+.selbar .seg button{height:24px;padding:0 9px;font-size:12px}
 .kc{cursor:grab;position:relative}
 .kcm{display:flex;flex-direction:column;gap:7px;text-align:left;width:100%}
 .hrs{background-image:repeating-linear-gradient(to bottom,transparent 0 51px,var(--bd) 51px 52px);position:relative}

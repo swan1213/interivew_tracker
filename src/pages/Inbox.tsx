@@ -11,7 +11,7 @@ import { selfServe } from '@/lib/links';
 import { addD, lab } from '@/lib/time';
 import { colorOf, cx } from '@/lib/util';
 import { Icon } from '@/ui/Icon';
-import { AcDot, CatChip, Empty, Linked, PriBadge } from '@/ui/bits';
+import { AcDot, CatChip, Empty, Linked, PriBadge, Seg } from '@/ui/bits';
 
 export function Inbox() {
   const st = useStore();
@@ -35,10 +35,12 @@ function MessageList({ rows }: { rows: Email[] }) {
   const st = useStore();
   const title = st.peer ? 'All mail with ' + st.peer : st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
   // Filters set from elsewhere (a dashboard tile, say) have no picker here, so say they are on and offer to clear them.
-  const narrowed = [st.unreadOnly && 'Unread', st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.rangeFilter !== 'all' && 'Date range', st.savedKey && 'Saved view'].filter(Boolean);
+  // Read / unread has its own control in the list header, so it isn't listed here.
+  const narrowed = [st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.rangeFilter !== 'all' && 'Date range', st.savedKey && 'Saved view'].filter(Boolean);
 
   // Paging starts over whenever the list itself changes (another view, account, search or filter).
-  const listKey = [st.view, st.acctFilter, st.peer, st.q, narrowed.join()].join('|');
+  const readState: ReadState = st.unreadOnly ? 'unread' : st.readOnly ? 'read' : 'all';
+  const listKey = [st.view, st.acctFilter, st.peer, st.q, readState, narrowed.join()].join('|');
   const [pg, setPg] = useState({ key: listKey, n: 0 });
   if (pg.key !== listKey) setPg({ key: listKey, n: 0 });
   const listRef = useRef<HTMLDivElement>(null);
@@ -84,18 +86,18 @@ function MessageList({ rows }: { rows: Email[] }) {
             <Icon name="refresh" sm />
           </button>
         </h1>
-        {shown.length > 0 && (
-          <SelectBar
-            shown={shown}
-            picked={picked}
-            pick={(es) => pick(ids(es))}
-            mark={(read) => st.setRead(ids(picked), read)}
-          />
-        )}
+        <SelectBar
+          shown={shown}
+          picked={picked}
+          pick={(es) => pick(ids(es))}
+          mark={(read) => st.setRead(ids(picked), read)}
+          readState={readState}
+          setReadState={(r) => st.patch({ unreadOnly: r === 'unread', readOnly: r === 'read' })}
+        />
         {narrowed.length > 0 && (
           <div className="narrow">
             <span>Filtered: {narrowed.join(', ')}</span>
-            <button type="button" className="lnk" onClick={() => st.patch({ unreadOnly: false, actionOnly: false, catFilter: 'all', priFilter: 'all', coFilter: 'all', ivFilter: 'all', rangeFilter: 'all', rangeFrom: '', rangeTo: '', savedKey: '' })}>
+            <button type="button" className="lnk" onClick={() => st.patch({ actionOnly: false, catFilter: 'all', priFilter: 'all', coFilter: 'all', ivFilter: 'all', rangeFilter: 'all', rangeFrom: '', rangeTo: '', savedKey: '' })}>
               Clear
             </button>
           </div>
@@ -159,8 +161,18 @@ function MessageList({ rows }: { rows: Email[] }) {
   );
 }
 
-/** Select all, none, read or unread conversations on the page, then mark the selection read or unread. */
-function SelectBar({ shown, picked, pick, mark }: { shown: Email[]; picked: Email[]; pick: (es: Email[]) => void; mark: (read: boolean) => void }) {
+type ReadState = 'all' | 'unread' | 'read';
+const READ_STATES: { k: ReadState; l: string }[] = [
+  { k: 'all', l: 'All' },
+  { k: 'unread', l: 'Unread' },
+  { k: 'read', l: 'Read' },
+];
+
+/**
+ * One row above the list: select all, none, read or unread conversations on the page, mark the
+ * selection read or unread, and show all, unread or read mail.
+ */
+function SelectBar({ shown, picked, pick, mark, readState, setReadState }: { shown: Email[]; picked: Email[]; pick: (es: Email[]) => void; mark: (read: boolean) => void; readState: ReadState; setReadState: (r: ReadState) => void }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   const menuRef = useClickOutside<HTMLDivElement>(open, close);
@@ -177,9 +189,9 @@ function SelectBar({ shown, picked, pick, mark }: { shown: Email[]; picked: Emai
   ];
   return (
     <div className="selbar">
-      <input ref={boxRef} type="checkbox" className="ck" checked={picked.length > 0 && all} onChange={() => pick(picked.length ? [] : shown)} aria-label="Select all conversations on this page" />
       <div className="selpick" ref={menuRef}>
-        <button type="button" className="ib" onClick={() => setOpen(!open)} aria-haspopup="menu" aria-expanded={open} aria-label="Select by read state" title="Select">
+        <input ref={boxRef} type="checkbox" className="ck" checked={picked.length > 0 && all} disabled={!shown.length} onChange={() => pick(picked.length ? [] : shown)} aria-label="Select all conversations on this page" />
+        <button type="button" className="selchev" onClick={() => setOpen(!open)} disabled={!shown.length} aria-haspopup="menu" aria-expanded={open} aria-label="Select by read state" title="Select">
           <Icon name="chevD" sm />
         </button>
         {open && (
@@ -201,21 +213,21 @@ function SelectBar({ shown, picked, pick, mark }: { shown: Email[]; picked: Emai
           </div>
         )}
       </div>
-      {picked.length > 0 ? (
+      {picked.length > 0 && (
         <>
-          <span className="mut selcount">{num(picked.length)} selected</span>
-          <button type="button" className="btn sm ghost" onClick={() => mark(true)} disabled={!picked.some((e) => e.unread)}>
+          <span className="selcount">
+            {num(picked.length)} <span>selected</span>
+          </span>
+          <button type="button" className="ib" onClick={() => mark(true)} disabled={!picked.some((e) => e.unread)} aria-label="Mark as read" title="Mark as read">
             <Icon name="mailOpen" sm />
-            Mark as read
           </button>
-          <button type="button" className="btn sm ghost" onClick={() => mark(false)} disabled={picked.every((e) => e.unread)}>
+          <button type="button" className="ib" onClick={() => mark(false)} disabled={picked.every((e) => e.unread)} aria-label="Mark as unread" title="Mark as unread">
             <Icon name="mail" sm />
-            Mark as unread
           </button>
         </>
-      ) : (
-        <span className="mut selcount">Select to mark read or unread</span>
       )}
+      <span className="sp" />
+      <Seg value={readState} options={READ_STATES} onChange={setReadState} ariaLabel="Show read or unread mail" />
     </div>
   );
 }

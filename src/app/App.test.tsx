@@ -139,28 +139,28 @@ describe('App', () => {
       const item = [...container.querySelectorAll<HTMLButtonElement>('.selmenu [role="menuitem"]')].find((b) => b.textContent === label)!;
       act(() => item.click());
     };
-    const button = (label: string) => [...container.querySelectorAll<HTMLButtonElement>('.selbar .btn')].find((b) => b.textContent?.includes(label))!;
+    const button = (label: string) => container.querySelector<HTMLButtonElement>('.selbar [aria-label="' + label + '"]') || undefined;
 
     // Nothing selected: no mark buttons yet.
     expect(button('Mark as read')).toBeUndefined();
     choose('Unread');
     expect(boxes().map((b) => b.checked)).toEqual([true, true, false, false, false, false]);
     expect(container.querySelector('.selcount')?.textContent).toBe('2 selected');
-    expect(button('Mark as unread').disabled).toBe(true);
-    act(() => button('Mark as read').click());
+    expect(button('Mark as unread')!.disabled).toBe(true);
+    act(() => button('Mark as read')!.click());
     expect(unread()).toEqual([]);
 
     // Read ones, by hand: check two rows, then mark them unread.
     choose('None');
     act(() => boxes()[3].click());
     act(() => boxes()[4].click());
-    act(() => button('Mark as unread').click());
+    act(() => button('Mark as unread')!.click());
     expect(unread()).toEqual(['m3', 'm4']);
     // Checking a row doesn't open it.
     expect(useStore.getState().selId).toBe('');
 
     // The header box clears a partial selection (like Gmail), then selects the whole page, then clears it.
-    const all = container.querySelector<HTMLInputElement>('.selbar > .ck')!;
+    const all = container.querySelector<HTMLInputElement>('.selpick > .ck')!;
     expect(all.indeterminate).toBe(true);
     act(() => all.click());
     expect(boxes().some((b) => b.checked)).toBe(false);
@@ -168,6 +168,19 @@ describe('App', () => {
     expect(boxes().every((b) => b.checked)).toBe(true);
     act(() => all.click());
     expect(boxes().some((b) => b.checked)).toBe(false);
+
+    // The filter shows unread mail, read mail, or both.
+    const show = (label: string) => {
+      const tab = [...container.querySelectorAll<HTMLButtonElement>('.selbar .seg button')].find((b) => b.textContent === label)!;
+      act(() => tab.click());
+    };
+    const subjects = () => [...container.querySelectorAll('.er .sub')].map((s) => s.textContent);
+    show('Unread');
+    expect(subjects()).toEqual(['Message 3', 'Message 4']);
+    show('Read');
+    expect(subjects()).toEqual(['Message 0', 'Message 1', 'Message 2', 'Message 5']);
+    show('All');
+    expect(subjects()).toHaveLength(6);
   });
 
   it('a message with an HTML version is shown as its sender laid it out, in a sandboxed frame', async () => {
@@ -226,7 +239,7 @@ describe('App', () => {
     act(() => slots[0].click());
     act(() => slots[1].click());
     act(() => slots[2].click());
-    expect(container.innerHTML).not.toContain('selected');
+    expect(container.querySelector('.modal')?.textContent).not.toContain('selected');
     expect(container.querySelectorAll('.slot.on')).toHaveLength(3);
     click('.mft .btn.pri');
     expect(useStore.getState().schedOpen).toBe(false);
