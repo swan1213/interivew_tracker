@@ -305,6 +305,15 @@ describe('receipts, calendar notices and booked interviews are not requests', ()
     expect(sga.cat).toBe('applied');
   });
 
+  it("a receipt whose privacy notice says \"after which time\" is a receipt", () => {
+    const r = c('ascensushr@myworkday.com', 'Thank you for your application!',
+      'Thank you for expressing interest in a career opportunity at Ascensus for the position of Software Engineer . The information you provided is currently being reviewed.\n\nHow long do we keep your data?\nIf you were not hired, your application will be held for a one-year period after which time it will be destroyed.');
+    expect(r.cat).toBe('applied');
+    expect(r.mode).toBeUndefined();
+    const ask = c('jane@acme.com', 'Interview', 'Hi Gregory, we would like to meet. Which time works best for you: Tuesday or Wednesday?');
+    expect(ask.cat).toBe('avail');
+  });
+
   it('a receipt without receipt wording in the subject is still a receipt', () => {
     const r = c('no-reply@ashbyhq.com', 'Your FutureFit AI app is in good hands, Gregory!',
       "Thanks for applying for the Software Engineer role at FutureFit AI. We're excited to meet you! Our team will review yours for initial fit as soon as we can. We're committed to letting you know whether there's a fit either way.");
