@@ -344,6 +344,14 @@ describe('receipts, calendar notices and booked interviews are not requests', ()
     expect(co('noventive - IP securely protected', 'recruiting@noventive.com')).toBe('Noventive');
   });
 
+  it('a rejection that invites you to follow the company on LinkedIn is a rejection, not an invitation', () => {
+    const r = c('no-reply@betterhelp.com', 'Staff ML/AI Platform Engineer - BetterHelp',
+      "Thank you so much for your patience and for taking the time to apply for the Staff ML/AI Platform Engineer role at BetterHelp. After much consideration, we've decided to move forward with a few other candidates for this role.\n\nWe'd also like to invite you to follow us on LinkedIn for the latest on new postings and company updates.");
+    expect(r.cat).toBe('rejected');
+    // An invitation to an interview still is one.
+    expect(c('jane@acme.com', 'Next steps', "We'd like to invite you to a 30-minute call with our hiring manager.").cat).toBe('invite');
+  });
+
   it('a receipt without receipt wording in the subject is still a receipt', () => {
     const r = c('no-reply@ashbyhq.com', 'Your FutureFit AI app is in good hands, Gregory!',
       "Thanks for applying for the Software Engineer role at FutureFit AI. We're excited to meet you! Our team will review yours for initial fit as soon as we can. We're committed to letting you know whether there's a fit either way.");

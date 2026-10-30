@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { CalEvent } from '@/data/types';
 import type { Application } from '@/data/types';
-import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions, meetingStages, titleCompany } from './calendar';
+import { conflictPairs, conflictsOf, isInterviewMeeting, layoutLanes, meetingMentions, meetingStages, titleCompany, type NextRound } from './calendar';
 
 const ev = (id: string, start: number, end: number): CalEvent => ({ id, kind: 'interview', co: id, role: '', stage: 'screen', date: '2026-10-27', start, end, added: true });
 const lanes = (m: Map<string, { lane: number; lanes: number }>) => Object.fromEntries([...m].map(([id, l]) => [id, l.lane + '/' + l.lanes]));
@@ -183,6 +183,23 @@ describe('interview columns follow the calendar', () => {
 
   it('keeps your move between interview columns when there is a meeting', () => {
     expect(run([app('Acme', { stage: 'next', locked: true })], [meet('1', 'Interview with Acme', '2026-10-20')])).toEqual({ Acme: 'next' });
+  });
+
+  it('moves on to the next round when an email after the last meeting asks to schedule it', () => {
+    // StreamNative: recruiter call on Oct 28, then "Hiring Manager Interview, Availability Request" on Oct 29.
+    const evs = [meet('1', 'Interview with StreamNative', '2026-10-28')];
+    const mail = { 'm-StreamNative': '2026-10-29' };
+    const asks = (stage: 'tech' | 'next') => () => ({ stage, label: 'Hiring manager conversation' });
+    const at = (nextRound?: () => NextRound | undefined, day = '2026-10-29') => meetingStages([app('StreamNative')], evs, [], day, (id) => mail[id as keyof typeof mail], nextRound)[0];
+    expect(at(asks('next')).stage).toBe('next');
+    expect(at(asks('next')).next).toBe('Hiring manager conversation, to schedule');
+    expect(at(asks('tech')).stage).toBe('tech');
+    // No request for another round: still the first interview.
+    expect(at(() => undefined).stage).toBe('first');
+    // The request came before the meeting (it was for that meeting): still the first interview.
+    expect(meetingStages([app('StreamNative')], evs, [], '2026-10-29', () => '2026-10-22', asks('next'))[0].stage).toBe('first');
+    // A booked meeting coming up wins over the request.
+    expect(at(asks('next'), '2026-10-27').stage).toBe('first');
   });
 
   it('reopens a rejection when a meeting comes after the latest email', () => {

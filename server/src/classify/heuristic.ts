@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 13;
+export const RULES_VERSION = 14;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -294,13 +294,13 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   const calNotice = CAL_NOTICE.test(p.subject);
   const strongOffer = inPlain(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|offer of employment)\b/i);
   const looseOffer = inPlain(/\b(job offer|formal offer)\b/i);
-  const rejectHit = has(/\b(not (be )?moving forward|move forward with other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|(have|has) filled the (position|role)|(role|position) is no longer (open|available)|pursue other candidates)\b/i);
+  const rejectHit = has(/\b(not (be )?moving forward|move forward with ((a few|some|several|the) )?other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|(have|has) filled the (position|role)|(role|position) is no longer (open|available)|pursue other candidates)\b/i);
   const reschedHit = !calNotice && asking.some((s) => !RESCHED_OPTION.test(s) && /\breschedul\w*|\bmove (our|the|this|your|[a-z]+day'?s) (interview|call|meeting|conversation)|\bnew time\b|\bpush (back|our)/i.test(s));
   const confirmedHit = has(/\b(interview|call|session|meeting|conversation)\b[^.\n]{0,60}\b(is |has been )?(confirmed|scheduled|booked|set)\b|\bconfirmed:|\bconfirmation\b[^.\n]{0,40}\binterview|\b(interview|call|meeting|time) is confirmed\b|\b(pleased|happy|excited|writing) to confirm (your|our|the) (upcoming )?(\w+ ){0,3}(interview|call|meeting|conversation|chat)\b|\bcalendar invite\b/i);
   // "Feel free to update your profile at any time" and "provide an update by the time..." are not asking for times,
   // and neither is a privacy notice's "held for one year, after which time it will be destroyed".
   const availHit = asks(/\b(availability|available|(are|you're|you are) free)\b[^.\n]{0,80}\b(time|times|slot|slots|day|days|week)\b|\b(share|send|provide|suggest|let me know|let us know)\b[^.\n]{0,40}\b(your (availability|available times?)|(a few|some|two|three|couple of|several|\d) (times?|slots?)|time slots?|what time works|times? that works?|availability)\b|\bwhat (times?|days?) work|\bat what time\b|\bwhen (are|would|will) you|(?<!\b(after|at|by|until|during|from) )\bwhich time\b/i);
-  const inviteHit = asks(/\blink to (book|schedule)\b|\b(book|schedule|pick|select|choose) (a|some) (time|slot)\b|\binvit(e|ed|ation)\b[^.\n]{0,60}\b(interview|call|screen|screening|conversation|chat)\b|\b(would like|we'd like|like|want) to (schedule|set up|arrange|invite you|speak|talk|chat)\b|\bnext (step|round)\b[^.\n]{0,60}\b(interview|call|conversation)/i);
+  const inviteHit = asks(/\blink to (book|schedule)\b|\b(book|schedule|pick|select|choose) (a|some) (time|slot)\b|\binvit(e|ed|ation)\b[^.\n]{0,60}\b(interview|call|screen|screening|conversation|chat)\b|\b(would like|we'd like|like|want) to (schedule|set up|arrange|speak|talk|chat)\b|\bnext (step|round)\b[^.\n]{0,60}\b(interview|call|conversation)/i);
   const assessHit = asking.map((s) => s.replace(/\S*https?:\/\/\S+/g, '')).some((s) => ASSESS_TERM.test(s) && ASSESS_ASK.test(s) && !/\b(assessment (report|of|partner)|(has been|was) (completed|submitted)|refrain|ai tools?)\b/i.test(s));
   const testHit = asks(/\b(start|take|access) (the|a|an|this) (\w+ ){0,3}(test|evaluation)\b/i);
   const actionHit = assessHit || testHit || asks(/\bplease (send|complete|submit|provide|fill|upload|sign|return|confirm)\b|\b(could|can|would) you (please )?(send|provide|share|complete|submit|confirm|fill)\b|\bdeadline\b|\bdue (by|on)\b|\bno later than\b/i);

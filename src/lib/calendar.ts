@@ -159,11 +159,23 @@ export const INTERVIEW: StageKey[] = ['first', 'tech', 'next'];
  * days before the company's first email. Only companies with a meeting are in an interview column, even
  * if you moved them there. Cards you moved elsewhere, and offers and hires, keep their stage; so does a
  * rejection, unless a meeting came after the company's latest email (`mailDay` gives an email's ISO day).
+ * When that latest email, sent after the last meeting, asks to schedule another round and none is booked
+ * (`nextRound` reads it), the card moves to that round: the recruiter screen is done, the hiring manager
+ * interview is being arranged.
  * `next` shows the upcoming meeting when there is one,
  * `meetings` and `meetingIds` list the meetings. A meeting that matches no application still gets a
  * card of its own (`fromCal`), named after the organizer's company, so every interview is on the board.
  */
-export function meetingStages(apps: Application[], events: CalEvent[], own: string[], today: string, mailDay?: (emailId: string) => string | undefined): Application[] {
+export interface NextRound { stage: 'tech' | 'next'; label: string }
+
+export function meetingStages(
+  apps: Application[],
+  events: CalEvent[],
+  own: string[],
+  today: string,
+  mailDay?: (emailId: string) => string | undefined,
+  nextRound?: (emailId: string) => NextRound | undefined,
+): Application[] {
   const meetings = events.filter((v) => v.added && isInterviewMeeting(v, own)).sort((a, b) => a.date.localeCompare(b.date) || a.start - b.start);
   const byApp = new Map<string, CalEvent[]>();
   const loose = new Map<string, { name: string; evs: CalEvent[] }>();
@@ -199,6 +211,8 @@ export function meetingStages(apps: Application[], events: CalEvent[], own: stri
     const up = mine.find((v) => v.date >= today);
     // Rounds are counted by day: two entries on one day are usually the same interview twice.
     const rounds = new Set(mine.map((v) => v.date)).size;
+    const asked = !up && !!last && last > mine[mine.length - 1].date ? nextRound?.(a.emailId) : undefined;
+    if (asked) return { ...a, ...found, stage: asked.stage, next: asked.label + ', to schedule' };
     return { ...a, ...found, stage: isTechnical(mine[mine.length - 1].co) ? 'tech' : rounds > 1 ? 'next' : 'first', next: up ? lab(up.date) + ', ' + fmtT(up.start) + ' ET' : '' };
   };
   const fromCal = [...loose].map(([key, { name, evs }]): Application => {

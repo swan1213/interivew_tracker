@@ -1,7 +1,7 @@
 import type { Account, Application, CalEvent, Email, InboxView, ThemePref } from '@/data/types';
-import { meetingStages } from '@/lib/calendar';
+import { isTechnical, meetingStages, type NextRound } from '@/lib/calendar';
 import { addD } from '@/lib/time';
-import { inView, needsAction } from '@/lib/mail';
+import { effCat, inView, needsAction } from '@/lib/mail';
 
 export const FALLBACK_ACCT: Account = {
   id: '', label: 'No account', addr: '', provider: 'Gmail', color: '#666666', initial: '?', sendAs: '', sync: '',
@@ -39,7 +39,16 @@ export function trackedApps(s: TrackIn): Application[] {
   if (!tracked || tracked.apps !== s.apps || tracked.events !== s.events || tracked.accts !== s.accts || tracked.emails !== s.emails || tracked.today !== s.today) {
     const ago = new Map(s.emails.map((e) => [e.id, e.ago]));
     const mailDay = (id: string) => (ago.has(id) ? addD(s.today, -Math.floor(ago.get(id)! / 1440)) : undefined);
-    tracked = { apps: s.apps, events: s.events, accts: s.accts, emails: s.emails, today: s.today, out: meetingStages(s.apps, s.events, s.accts.map((a) => a.addr), s.today, mailDay) };
+    const byId = new Map(s.emails.map((e) => [e.id, e]));
+    // An email asking to schedule a round ("Hiring Manager Interview, Availability Request") names the round it is for.
+    const nextRound = (id: string): NextRound | undefined => {
+      const e = byId.get(id);
+      const c = e && effCat(e);
+      if (!e || (c !== 'avail' && c !== 'invite')) return undefined;
+      const label = e.stage.replace(/\s*\(inferred\)$/, '').replace(/ scheduling$/, '') || 'Interview';
+      return { stage: isTechnical(e.stage + ' ' + e.subject) ? 'tech' : 'next', label };
+    };
+    tracked = { apps: s.apps, events: s.events, accts: s.accts, emails: s.emails, today: s.today, out: meetingStages(s.apps, s.events, s.accts.map((a) => a.addr), s.today, mailDay, nextRound) };
   }
   return tracked.out;
 }
