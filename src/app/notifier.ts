@@ -1,4 +1,4 @@
-import type { Alert } from '@/lib/notify';
+import { mailAlerts, mailReason, type Alert } from '@/lib/notify';
 import { useStore } from '@/store/store';
 
 /** Browser notifications are available here at all. */
@@ -33,11 +33,19 @@ function registration(): Promise<ServiceWorkerRegistration | undefined> {
 
 /** Show one notification; resolves false if the browser refused it. */
 export async function show(a: Alert): Promise<boolean> {
-  const opts: NotificationOptions = { body: a.body, tag: a.key, icon: '/notify-icon.png', data: { emailId: a.emailId || '' } };
+  const opts: NotificationOptions & { actions?: { action: string; title: string }[] } = {
+    body: a.body,
+    tag: a.key,
+    icon: '/notify-icon.png',
+    requireInteraction: !!a.sticky,
+    data: { emailId: a.emailId || '', link: a.link || '' },
+  };
+  // Buttons work only on notifications a service worker shows.
+  const buttons = [...(a.link ? [{ action: 'join', title: 'Join meeting' }] : []), ...(a.emailId ? [{ action: 'open', title: 'Open email' }] : [])];
   try {
     const r = await registration();
     if (r) {
-      await r.showNotification(a.title, opts);
+      await r.showNotification(a.title, { ...opts, actions: buttons } as NotificationOptions);
       return true;
     }
     const n = new Notification(a.title, opts);
@@ -59,5 +67,11 @@ export async function askPermission(): Promise<NotificationPermission | 'unsuppo
   return Notification.permission === 'default' ? Notification.requestPermission() : Notification.permission;
 }
 
-export const sendTest = (): Promise<boolean> =>
-  show({ key: 'test-' + Date.now(), title: 'InterviewFlow notifications work', body: 'You will be told about starred mail, calendar bookings and reminders.' });
+/** A sample built from the latest mail that would notify, so the test shows the real detail; a plain one otherwise. */
+export function sendTest(): Promise<boolean> {
+  const s = useStore.getState();
+  const e = s.emails.find((x) => mailReason(x));
+  if (!e) return show({ key: 'test-' + Date.now(), title: 'InterviewFlow notifications work', body: 'You will be told about starred mail, calendar bookings and reminders.' });
+  const [a] = mailAlerts([{ ...e, ago: 0 }], new Set(), s.events, s.S);
+  return show({ ...a, key: 'test-' + Date.now(), title: 'Test · ' + a.title });
+}

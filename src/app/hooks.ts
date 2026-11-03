@@ -140,7 +140,7 @@ export function useBrowserNotifications(): void {
     const check = () => {
       const s = useStore.getState();
       // Mark mail seen even while off, so switching on later doesn't replay it.
-      const alerts = mailAlerts(s.emails, seen).concat(reminderAlerts(s.events, s.S, fired, new Date()));
+      const alerts = mailAlerts(s.emails, seen, s.events, s.S).concat(reminderAlerts(s.events, s.S, fired, new Date()));
       save();
       if (canNotify()) alerts.forEach((a) => void show(a));
     };

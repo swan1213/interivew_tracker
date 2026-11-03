@@ -1,9 +1,17 @@
 import type { CalEvent, Email, Notif, NotifKey, Settings } from '@/data/types';
 import { effCat } from './mail';
-import { etInstant } from './time';
+import { etInstant, fmtT, lab, tzOffset } from './time';
 
-/** What a browser notification says, and the email it opens on click. */
-export interface Alert { key: string; title: string; body: string; emailId?: string }
+/** What a browser notification says, the email it opens on click, and the meeting its Join button opens. */
+export interface Alert {
+  key: string;
+  title: string;
+  body: string;
+  emailId?: string;
+  link?: string;
+  /** Stays on screen until dismissed (interview reminders). */
+  sticky?: boolean;
+}
 
 /** Mail newer than this is still news; anything older is never announced (first run, turning the switch on). */
 const FRESH_MIN = 120;
@@ -25,15 +33,40 @@ export function mailReason(e: Email): string | null {
   return null;
 }
 
+const clip = (s: string, n: number): string => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s);
+
+/** "Tue, Nov 4, 2:00 PM ET" for a stored ET date and hour, in the zone chosen in Settings. */
+export const whenLabel = (date: string, start: number, S: Settings): string =>
+  lab(date) + ', ' + fmtT(start + tzOffset(S.tz, etInstant(date, start))) + ' ' + S.tz;
+
+/** A meeting link as something a browser can open ("zoom.us/j/1" → "https://zoom.us/j/1"). */
+const href = (link?: string): string | undefined => (!link ? undefined : /^https?:\/\//i.test(link) ? link : 'https://' + link);
+
+/**
+ * What the notification says about an email: the subject, who sent it and for which role,
+ * the interview time if one is booked (or the time asked about, or the deadline), and the gist.
+ */
+export function mailBody(e: Email, v: CalEvent | undefined, S: Settings): string {
+  const who = [e.fromName, e.role].filter(Boolean).join(' · ');
+  const when = v
+    ? '🗓 ' + whenLabel(v.date, v.start, S) + (v.platform ? ' · ' + v.platform : '')
+    : e.times[0]?.label ? '🗓 ' + e.times[0].label
+    : e.deadline ? '⏰ Due ' + e.deadline
+    : '';
+  return [e.subject, who, when, e.summary && e.summary !== e.subject ? clip(e.summary, 160) : ''].filter(Boolean).join('\n');
+}
+
 /** Notifications for mail not announced before; every current conversation is marked seen. */
-export function mailAlerts(emails: Email[], seen: Set<string>): Alert[] {
+export function mailAlerts(emails: Email[], seen: Set<string>, events: CalEvent[], S: Settings): Alert[] {
   const out: Alert[] = [];
   for (const e of emails) {
     const k = mailKey(e);
     if (seen.has(k)) continue;
     seen.add(k);
     const why = e.ago <= FRESH_MIN ? mailReason(e) : null;
-    if (why) out.push({ key: k, title: why + ': ' + (e.company || e.fromName), body: e.subject, emailId: e.id });
+    if (!why) continue;
+    const v = events.find((x) => x.kind === 'interview' && (x.id === e.evId || x.emailId === e.id));
+    out.push({ key: k, title: why + ' · ' + (e.company || e.fromName), body: mailBody(e, v, S), emailId: e.id, link: href(v?.link) });
   }
   return out;
 }
@@ -57,7 +90,14 @@ export function reminderAlerts(events: CalEvent[], S: Settings, fired: Set<strin
       const due = at - m * 60_000;
       if (fired.has(k) || now.getTime() < due || now.getTime() > Math.min(at, due + LATE_MS)) continue;
       fired.add(k);
-      out.push({ key: k, title: 'Interview in ' + before(m) + ': ' + v.co, body: [v.role, v.platform].filter(Boolean).join(' · '), emailId: v.emailId || undefined });
+      const mins = Math.round((v.end - v.start) * 60);
+      const body = [
+        v.role,
+        '🗓 ' + whenLabel(v.date, v.start, S) + (mins > 0 ? ' (' + mins + ' min)' : '') + (v.platform ? ' · ' + v.platform : ''),
+        v.interviewer ? 'With ' + v.interviewer : '',
+        v.link ? '🔗 ' + v.link : '',
+      ].filter(Boolean).join('\n');
+      out.push({ key: k, title: 'Interview in ' + before(m) + ' · ' + v.co, body, emailId: v.emailId || undefined, link: href(v.link), sticky: true });
     }
   }
   return out;

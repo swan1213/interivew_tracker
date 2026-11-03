@@ -28,12 +28,29 @@ describe('which mail gets a browser notification', () => {
     const seen = new Set<string>();
     const fresh = mail({ starred: true });
     const old = mail({ starred: true, ago: 600 });
-    expect(mailAlerts([fresh, old], seen).map((a) => a.emailId)).toEqual([fresh.id]);
-    expect(mailAlerts([fresh, old], seen)).toEqual([]);
+    expect(mailAlerts([fresh, old], seen, [], DEFAULT_SETTINGS).map((a) => a.emailId)).toEqual([fresh.id]);
+    expect(mailAlerts([fresh, old], seen, [], DEFAULT_SETTINGS)).toEqual([]);
     expect(seen.has(mailKey(old))).toBe(true);
     // A new message in the starred conversation.
     const reply = { ...fresh, thread: fresh.thread.concat([{ from: 'Ann', addr: 'ann@co.example', when: '', body: '' }]) };
-    expect(mailAlerts([reply], seen)).toHaveLength(1);
+    expect(mailAlerts([reply], seen, [], DEFAULT_SETTINGS)).toHaveLength(1);
+  });
+});
+
+describe('what a mail notification says', () => {
+  it('who, which role, when the interview is booked, and the gist; Join opens the meeting', () => {
+    const e = mail({ cat: 'confirmed', company: 'Acme', fromName: 'Jane Doe', role: 'Senior Engineer', subject: 'Interview confirmed', summary: 'Your technical interview with Acme is confirmed.', evId: 'v9' });
+    const v: CalEvent = { id: 'v9', kind: 'interview', co: 'Acme', role: 'Tech', stage: 'tech', date: '2026-11-04', start: 14, end: 15, platform: 'Zoom', link: 'zoom.us/j/1', added: true };
+    const [a] = mailAlerts([e], new Set(), [v], { ...DEFAULT_SETTINGS, tz: 'PT' });
+    expect(a.title).toBe('Interview booked · Acme');
+    expect(a.body.split('\n')).toEqual(['Interview confirmed', 'Jane Doe · Senior Engineer', '🗓 Wed, Nov 4, 11:00 AM PT · Zoom', 'Your technical interview with Acme is confirmed.']);
+    expect(a.link).toBe('https://zoom.us/j/1');
+  });
+
+  it('a deadline when there is no interview time', () => {
+    const [a] = mailAlerts([mail({ starred: true, deadline: 'Fri, Nov 6', times: [], summary: '' })], new Set(), [], DEFAULT_SETTINGS);
+    expect(a.body).toContain('⏰ Due Fri, Nov 6');
+    expect(a.link).toBeUndefined();
   });
 });
 
@@ -45,14 +62,16 @@ describe('interview reminders', () => {
     const fired = new Set<string>();
     expect(reminderAlerts([v], DEFAULT_SETTINGS, fired, new Date(at - 61 * 60_000))).toEqual([]);
     const [a] = reminderAlerts([v], DEFAULT_SETTINGS, fired, new Date(at - 59 * 60_000));
-    expect(a.title).toBe('Interview in 1 hour: Acme');
+    expect(a.title).toBe('Interview in 1 hour · Acme');
+    expect(a.body.split('\n')).toEqual(['Tech interview', '🗓 Wed, Nov 4, 2:00 PM ET (60 min) · Zoom']);
+    expect(a.sticky).toBe(true);
     expect(reminderAlerts([v], DEFAULT_SETTINGS, fired, new Date(at - 58 * 60_000))).toEqual([]);
     expect(reminderAlerts([v], DEFAULT_SETTINGS, new Set(), new Date(at - 30 * 60_000))).toEqual([]);
   });
 
   it('uses the Settings reminders when the event has none, and skips events not on the calendar', () => {
     const own = { ...v, rem: undefined };
-    expect(reminderAlerts([own], DEFAULT_SETTINGS, new Set(), new Date(at - 1439 * 60_000))[0].title).toBe('Interview in 1 day: Acme');
+    expect(reminderAlerts([own], DEFAULT_SETTINGS, new Set(), new Date(at - 1439 * 60_000))[0].title).toBe('Interview in 1 day · Acme');
     expect(reminderAlerts([{ ...v, added: false }], DEFAULT_SETTINGS, new Set(), new Date(at - 59 * 60_000))).toEqual([]);
   });
 

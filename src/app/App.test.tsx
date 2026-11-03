@@ -541,7 +541,9 @@ describe('App', () => {
     N.permission = 'default';
     await act(async () => sw().click());
     expect(useStore.getState().S.notif.browser).toBe(true);
-    expect(shown).toEqual(['InterviewFlow notifications work']);
+    // The test previews a real notification from the latest starred or booked mail.
+    expect(shown).toHaveLength(1);
+    expect(shown[0]).toMatch(/^Test · (Starred|Interview booked|Reminder) · /);
     expect(container.innerHTML).toContain('Send test');
     await act(async () => sw().click());
     expect(useStore.getState().S.notif.browser).toBe(false);

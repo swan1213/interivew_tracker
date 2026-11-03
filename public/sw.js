@@ -5,9 +5,14 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
-  const emailId = (e.notification.data && e.notification.data.emailId) || '';
+  const data = e.notification.data || {};
+  const emailId = data.emailId || '';
   e.waitUntil(
     (async () => {
+      if (e.action === 'join' && data.link) {
+        await self.clients.openWindow(data.link);
+        return;
+      }
       const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       const tab = tabs.find((c) => new URL(c.url).origin === self.location.origin);
       if (tab) {
