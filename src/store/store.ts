@@ -263,6 +263,22 @@ function initialFields(): StateFields {
 
 let autoSyncing = false;
 
+/**
+ * Read and star changes the mailbox hasn't confirmed yet. A snapshot that arrives meanwhile was built
+ * before them, so they are laid over it; each is dropped once its request settles.
+ */
+type MailFlags = Partial<Pick<Email, 'unread' | 'starred'>>;
+const pending = new Map<string, { flags: MailFlags; token: object }>();
+
+function hold(ids: string[], flags: MailFlags, request: Promise<void> | undefined): Promise<void> {
+  const token = {};
+  ids.forEach((id) => pending.set(id, { flags: { ...pending.get(id)?.flags, ...flags }, token }));
+  return Promise.resolve(request).finally(() => ids.forEach((id) => pending.get(id)?.token === token && pending.delete(id)));
+}
+
+const withPending = <T extends { emails: Email[] }>(d: T): T =>
+  pending.size ? { ...d, emails: d.emails.map((e) => (pending.has(e.id) ? { ...e, ...pending.get(e.id)!.flags } : e)) } : d;
+
 /** Rounds one sync keeps going while older mail is still waiting, so a first sync fills in the whole window. */
 const MAX_SYNC_ROUNDS = 80;
 /** Pause before continuing after Gmail asks the app to slow down. */
@@ -333,7 +349,7 @@ export const useStore = create<AppState>()((set, get) => {
       try {
         const [snap, me] = await Promise.all([provider.load(), authApi.me().catch(() => null)]);
         set((s) => ({
-          ...mergeSnapshot(s, snap), loading: false, compFrom: s.compFrom || snap.accts[0]?.id || '',
+          ...withPending(mergeSnapshot(s, snap)), loading: false, compFrom: s.compFrom || snap.accts[0]?.id || '',
           // Pick up a role change made by an admin since this page loaded.
           ...(me ? { members: upsertMember(s.members, toMember(me.user)), meId: me.user.email } : {}),
         }));
@@ -354,7 +370,7 @@ export const useStore = create<AppState>()((set, get) => {
         compOpen: false, aiDraft: '', variant: 0, mods: NO_MODS, chosen: [], notifOpen: false, acMenuOpen: false,
         emails: s.emails.map((x) => (x.id === id ? { ...x, unread: false } : x)),
       });
-      if (e?.unread) void provider.markRead?.(id).catch(() => undefined);
+      if (e?.unread) void hold([id], { unread: false }, provider.markRead?.(id)).catch(() => undefined);
     },
     setRead: (ids, read) => {
       // Only conversations whose state changes; the list updates now and goes back if the mailbox refuses.
@@ -363,7 +379,7 @@ export const useStore = create<AppState>()((set, get) => {
       const flip = (unread: boolean) => set((s) => ({ emails: s.emails.map((e) => (todo.has(e.id) ? { ...e, unread } : e)) }));
       flip(!read);
       showToast((todo.size === 1 ? '1 conversation' : todo.size + ' conversations') + ' marked as ' + (read ? 'read' : 'unread'));
-      void provider.setRead?.([...todo], read).catch(() => {
+      void hold([...todo], { unread: !read }, provider.setRead?.([...todo], read)).catch(() => {
         flip(read);
         showToast('Could not mark as ' + (read ? 'read' : 'unread') + ' in your mailbox.');
       });
@@ -372,7 +388,7 @@ export const useStore = create<AppState>()((set, get) => {
       const e = emailOf(get(), id);
       if (!e) return;
       mapEmail(id, (x) => ({ starred: !x.starred }));
-      void provider.setStar?.(id, !e.starred).catch(() => showToast('Could not update the star in Gmail.'));
+      void hold([id], { starred: !e.starred }, provider.setStar?.(id, !e.starred)).catch(() => showToast('Could not update the star in Gmail.'));
     },
     archive: (id, nextId) => {
       mapEmail(id, () => ({ archived: true }));

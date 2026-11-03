@@ -206,6 +206,37 @@ describe('sync → classify → derive with the mock Gmail', () => {
     expect(Object.keys((await store.readMail(other.id)).threads)).toHaveLength(11);
   });
 
+  it('keeps a read, unread or star change made while a sync is running', async () => {
+    const own = { ...acct, id: 'g-race' };
+    await store.writeAccounts([acct, own]);
+    const gm = new mock.MockGmail();
+    gm.messages.clear();
+    mock.demoAsGmail(NOW).forEach((m) => gm.messages.set(m.id, m));
+    await sync.syncAccount(own, gm, NOW);
+    const unread = (id: string) => (async () => (await store.readMail(own.id)).threads[id].messages.some((m) => m.labelIds.includes('UNREAD')))();
+    expect(await unread('t-e1')).toBe(true);
+
+    // The sync has read Gmail's unread list; then you open the conversation and it is marked read.
+    const list = gm.listMessageIds.bind(gm);
+    let done = false;
+    gm.listMessageIds = async (q: string, max: number) => {
+      const ids = await list(q, max);
+      if (!done && q.includes('is:unread')) {
+        done = true;
+        await gm.modifyThread('t-e1', [], ['UNREAD']);
+        await sync.updateStoredLabels(own.id, 't-e1', [], ['UNREAD']);
+      }
+      return ids;
+    };
+    await sync.syncAccount(own, gm, NOW);
+    expect(done).toBe(true);
+    expect(await unread('t-e1')).toBe(false);
+    // The next sync agrees with Gmail.
+    gm.listMessageIds = list;
+    await sync.syncAccount(own, gm, NOW);
+    expect(await unread('t-e1')).toBe(false);
+  });
+
   it('forgets mail moved to Trash or deleted for good in Gmail', async () => {
     const ids = Object.keys((await store.readMail(acct.id)).threads);
     expect(ids).toContain('t-news');

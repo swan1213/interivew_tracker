@@ -24,7 +24,7 @@ export interface Member {
 }
 export type InboxView =
   | 'inbox' | 'action' | 'invite' | 'avail'
-  | 'offers' | 'rejected' | 'auto' | 'sent' | 'other';
+  | 'offers' | 'rejected' | 'auto' | 'sent' | 'other' | 'starred';
 export type CalView = 'year' | 'quarter' | 'month' | 'week' | 'day' | 'agenda';
 export type SortKey = 'newest' | 'oldest' | 'priority' | 'deadline';
 export type CompMode = 'reply' | 'replyall' | 'forward';

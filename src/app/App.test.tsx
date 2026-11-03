@@ -183,6 +183,23 @@ describe('App', () => {
     expect(subjects()).toHaveLength(6);
   });
 
+  it('the Starred view lists starred conversations, and starring one adds it', () => {
+    const base = buildDemoData().emails[0];
+    const mail = Array.from({ length: 4 }, (_, i) => ({ ...base, id: 'm' + i, subject: 'Message ' + i, starred: i === 2 }));
+    reset({ page: 'inbox', selId: '', emails: mail });
+    mount();
+    const starredNav = () => container.querySelector<HTMLButtonElement>('[title="Starred"]')!;
+    const count = () => starredNav().querySelector('.cnt')?.textContent;
+    expect(count()).toBe('1');
+    act(() => starredNav().click());
+    expect(window.location.pathname).toBe('/inbox/starred');
+    const subjects = () => [...container.querySelectorAll('.er .sub')].map((s) => s.textContent);
+    expect(subjects()).toEqual(['Message 2']);
+    act(() => useStore.getState().toggleStar('m0'));
+    expect(subjects()).toEqual(['Message 0', 'Message 2']);
+    expect(count()).toBe('2');
+  });
+
   it('a message with an HTML version is shown as its sender laid it out, in a sandboxed frame', async () => {
     const demo = provider;
     const asked: string[] = [];

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
 import { GRID_END_HOUR, GRID_START_HOUR, HOUR_PX } from '@/data/constants';
 import { seedMembers } from '@/lib/roles';
+import { provider, setProvider, type MailProvider } from '@/data/provider';
 import { DEFAULT_SETTINGS, drag, useStore } from './store';
 
 function reset() {
@@ -24,6 +25,34 @@ describe('store actions', () => {
     expect(st().page).toBe('inbox');
     expect(st().selId).toBe('e2');
     expect(st().emails.find((e) => e.id === 'e2')!.unread).toBe(false);
+  });
+
+  it('a refresh that arrives before the mailbox confirms a read or star change keeps the change', async () => {
+    const before = provider;
+    const snapshot = { ...buildDemoData(), today: '2026-10-26', nowHour: 9 };
+    let confirm = () => {};
+    const slow = new Promise<void>((r) => (confirm = r));
+    setProvider({
+      ...before, id: 'test', isDemo: false, clock: () => before.clock(),
+      load: async () => structuredClone(snapshot), setRead: () => slow, setStar: () => slow,
+    } as unknown as MailProvider);
+    try {
+      const e2 = () => st().emails.find((e) => e.id === 'e2')!;
+      const starred = e2().starred;
+      st().setRead(['e2'], true);
+      st().toggleStar('e2');
+      // The server's snapshot was built before the change: e2 unread, star as it was.
+      await st().hydrate();
+      expect([e2().unread, e2().starred]).toEqual([false, !starred]);
+      // Once confirmed, the next snapshot is the server's again.
+      confirm();
+      await slow;
+      await Promise.resolve();
+      await st().hydrate();
+      expect(e2().unread).toBe(snapshot.emails.find((e) => e.id === 'e2')!.unread);
+    } finally {
+      setProvider(before);
+    }
   });
 
   it('opening an email hidden by the current smart view falls back to the unified view', () => {

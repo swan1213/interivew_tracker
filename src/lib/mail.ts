@@ -20,6 +20,7 @@ export function inView(e: Email, view: InboxView): boolean {
     case 'auto': return c === 'auto' || e.sec === 'auto';
     case 'sent': return c === 'sent';
     case 'other': return c === 'other';
+    case 'starred': return e.starred;
     default: return true;
   }
 }

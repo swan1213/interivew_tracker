@@ -4,7 +4,7 @@ import { cfg } from './config';
 import { GmailError, gmailFor, isRateLimitError, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
 import { readMail, updateAccounts, writeMail } from './store';
-import type { StoredAccount, StoredThread } from './types';
+import type { MailStore, StoredAccount, StoredThread } from './types';
 
 /** The labels the UI mirrors, and the Gmail search that finds each. Order matters below. */
 const LABEL_QUERIES: Record<string, string> = { UNREAD: 'is:unread', STARRED: 'is:starred', INBOX: 'in:inbox' };
@@ -64,6 +64,7 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
   const deadline = Date.now() + cfg.syncBudgetMs;
   const left = () => deadline - Date.now();
   const mail = await readMail(acct.id);
+  const startLabels = labelsById(mail);
   const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
   const ids = listed.map((m) => m.id);
   const known = new Map<string, StoredThread>();
@@ -163,6 +164,7 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
 
   mail.skipped = Array.from(skipped).slice(-5000);
   mail.lastSync = now.toISOString();
+  await keepLabelChanges(acct.id, mail, startLabels);
   await writeMail(acct.id, mail);
   acct.lastSync = mail.lastSync;
   await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
@@ -223,6 +225,31 @@ async function dropDeleted(api: GmailApi, threads: Record<string, StoredThread>,
     if (!t.messages.length) delete threads[t.id];
   }
   return gone.size;
+}
+
+const labelKey = (labels: string[]): string => [...labels].sort().join(',');
+
+function labelsById(mail: MailStore): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const t of Object.values(mail.threads)) for (const m of t.messages) out.set(m.id, labelKey(m.labelIds));
+  return out;
+}
+
+/**
+ * A sync works on the copy of the mail it read when it started, for up to its time budget. Marking
+ * mail read, unread, starred or archived in that time saves labels to the stored copy; keep those
+ * rather than writing the sync's older ones over them (they are newer than its label refresh too).
+ */
+async function keepLabelChanges(accountId: string, mail: MailStore, startLabels: Map<string, string>): Promise<void> {
+  const latest = await readMail(accountId);
+  for (const t of Object.values(latest.threads)) {
+    for (const m of t.messages) {
+      const was = startLabels.get(m.id);
+      if (was === undefined || was === labelKey(m.labelIds)) continue;
+      const ours = mail.threads[t.id]?.messages.find((x) => x.id === m.id);
+      if (ours) ours.labelIds = m.labelIds;
+    }
+  }
 }
 
 /** Add and remove labels on every message of a stored thread (in memory). */

@@ -115,6 +115,7 @@ export const INBOX_TITLES: Record<InboxView, string> = {
   auto: 'Automated / no-reply',
   sent: 'Sent',
   other: 'Other mail',
+  starred: 'Starred',
 };
 
 export const SAVED_FILTERS: { k: string; l: string }[] = [

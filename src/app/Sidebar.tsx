@@ -52,6 +52,7 @@ export function Sidebar() {
     nav('Unified Inbox', 'inbox', unreadCount(mine), false, inb('inbox'), view('inbox')),
   ];
   const navViews: NavItem[] = [
+    nav('Starred', 'star', mine.filter((e) => e.starred).length, false, inb('starred'), view('starred')),
     nav('Action Required', 'bolt', actionN, true, inb('action'), view('action')),
     nav('Interview Invitations', 'video', viewUnread(mine, 'invite'), false, inb('invite') || inb('avail'), view('invite')),
     nav('Upcoming Interviews', 'checkc', 0, false, pg === 'cal' && st.calView === 'agenda', () => st.go('cal', { calView: 'agenda', calDate: st.today })),
