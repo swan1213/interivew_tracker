@@ -523,10 +523,12 @@ describe('App', () => {
   it('browser notifications ask the browser, then switch on; a refusal leaves them off', async () => {
     let answer: NotificationPermission = 'denied';
     const shown: string[] = [];
-    vi.stubGlobal('Notification', Object.assign(function (this: object, title: string) { shown.push(title); }, {
-      permission: 'default',
-      requestPermission: async () => answer,
-    }));
+    const N = Object.assign(function (this: object, title: string) { shown.push(title); }, {
+      permission: 'default' as NotificationPermission,
+      // Like a browser: the answer becomes the site's permission.
+      requestPermission: async () => (N.permission = answer),
+    });
+    vi.stubGlobal('Notification', N);
     reset({ page: 'settings' });
     mount();
     const sw = () => container.querySelector<HTMLElement>('button[aria-label="Browser notifications"]')!;
@@ -534,10 +536,13 @@ describe('App', () => {
     await act(async () => sw().click());
     expect(useStore.getState().S.notif.browser).toBe(false);
     expect(useStore.getState().toast).toContain('blocked');
+    // The user allows notifications in the site settings.
     answer = 'granted';
+    N.permission = 'default';
     await act(async () => sw().click());
     expect(useStore.getState().S.notif.browser).toBe(true);
-    expect(shown).toEqual(['Browser notifications are on']);
+    expect(shown).toEqual(['InterviewFlow notifications work']);
+    expect(container.innerHTML).toContain('Send test');
     await act(async () => sw().click());
     expect(useStore.getState().S.notif.browser).toBe(false);
     vi.unstubAllGlobals();

@@ -1,4 +1,4 @@
-import type { CalEvent, Email, Settings } from '@/data/types';
+import type { CalEvent, Email, Notif, NotifKey, Settings } from '@/data/types';
 import { effCat } from './mail';
 import { etInstant } from './time';
 
@@ -62,3 +62,19 @@ export function reminderAlerts(events: CalEvent[], S: Settings, fired: Set<strin
   }
   return out;
 }
+
+/** The Settings switch that controls a bell notification; action requests have none and always show. */
+const bellSwitch = (n: Notif): NotifKey | null =>
+  /reschedul/i.test(n.title) ? 'resched'
+  : /assessment/i.test(n.title) ? 'deadline'
+  : n.cat === 'invite' ? 'newInvite'
+  : n.cat === 'avail' ? 'avail'
+  : n.cat === 'confirmed' ? 'confirm'
+  : n.cat === 'offer' ? 'offer'
+  : null;
+
+/** Bell notifications the Settings switches allow. */
+export const bellNotifs = (notifs: Notif[], S: Settings): Notif[] => notifs.filter((n) => {
+  const k = bellSwitch(n);
+  return !k || S.notif[k];
+});

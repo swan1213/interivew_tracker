@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useStore } from '@/store/store';
+import { bellNotifs } from '@/lib/notify';
 import { getAcct, isDarkTheme } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT } from '@/data/constants';
@@ -19,7 +20,8 @@ const initials = (name: string): string =>
 
 export function TopBar() {
   const st = useStore();
-  const unreadNotifs = st.notifs.filter((n) => n.unread).length;
+  const notifs = bellNotifs(st.notifs, st.S);
+  const unreadNotifs = notifs.filter((n) => n.unread).length;
   const dark = isDarkTheme(st.themePref, st.sysDark);
   const closePop = useCallback(() => useStore.getState().patch({ notifOpen: false }), []);
   const popRef = useClickOutside<HTMLDivElement>(st.notifOpen, closePop);
@@ -91,7 +93,7 @@ export function TopBar() {
               </span>
             </div>
             <div style={{ overflow: 'auto' }}>
-              {st.notifs.map((n) => (
+              {notifs.map((n) => (
                 <button key={n.id} type="button" className={cx('nt', n.unread && 'un')} onClick={() => st.openNotif(n.id)}>
                   <span className={cx('ni2', 'cat-' + n.cat)}>
                     <Icon name={CAT[n.cat].i} sm />
@@ -105,10 +107,10 @@ export function TopBar() {
                   </span>
                 </button>
               ))}
-              {st.notifs.length === 0 && <div className="mut" style={{ padding: 14 }}>No notifications.</div>}
+              {notifs.length === 0 && <div className="mut" style={{ padding: 14 }}>No notifications.</div>}
             </div>
             <div style={{ padding: '8px 14px', borderTop: '1px solid var(--bd)' }} className="mut">
-              Reminders: in-app now. Browser, desktop and email channels are prepared in Settings for a future integration.
+              Choose what appears here, and turn on browser notifications, in Settings.
             </div>
           </div>
         )}

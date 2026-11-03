@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildDemoData } from '@/data/demo';
-import type { CalEvent, Email } from '@/data/types';
+import type { CalEvent, Email, Notif } from '@/data/types';
 import { DEFAULT_SETTINGS } from '@/store/store';
-import { mailAlerts, mailKey, mailReason, reminderAlerts } from './notify';
+import { bellNotifs, mailAlerts, mailKey, mailReason, reminderAlerts } from './notify';
 import { etInstant } from './time';
 
 const [base] = buildDemoData().emails;
@@ -59,5 +59,15 @@ describe('interview reminders', () => {
   it('reads stored hours as Eastern time', () => {
     expect(etInstant('2026-11-04', 14).toISOString()).toBe('2026-11-04T19:00:00.000Z');
     expect(etInstant('2026-07-04', 14).toISOString()).toBe('2026-07-04T18:00:00.000Z');
+  });
+});
+
+describe('the notification bell', () => {
+  it('follows the Settings switches; action requests always show', () => {
+    const n = (cat: Notif['cat'], title: string): Notif => ({ id: cat + title, title, text: '', time: '', unread: true, cat, emailId: '' });
+    const all = [n('invite', 'Interview invitation'), n('offer', 'Offer received'), n('action', 'Assessment deadline approaching'), n('action', 'Recruiter requesting information')];
+    expect(bellNotifs(all, DEFAULT_SETTINGS)).toHaveLength(4);
+    const S = { ...DEFAULT_SETTINGS, notif: { ...DEFAULT_SETTINGS.notif, newInvite: false, offer: false, deadline: false } };
+    expect(bellNotifs(all, S).map((x) => x.title)).toEqual(['Recruiter requesting information']);
   });
 });

@@ -2,7 +2,8 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { provider } from '@/data/provider';
 import { useStore } from '@/store/store';
 import { PAGE_TITLES, parsePath, pathFor } from '@/store/nav';
-import { mailAlerts, reminderAlerts, type Alert } from '@/lib/notify';
+import { mailAlerts, reminderAlerts } from '@/lib/notify';
+import { canNotify, show } from './notifier';
 import { loadJSON, saveJSON } from '@/lib/storage';
 
 /**
@@ -16,7 +17,9 @@ export function useBootstrap(): void {
     const q = new URLSearchParams(window.location.search);
     const connected = q.get('connected');
     const error = q.get('error');
-    if (connected || error) window.history.replaceState(null, '', window.location.pathname);
+    // A notification clicked after the tab was closed opens the app on its email.
+    const open = q.get('open');
+    if (connected || error || open) window.history.replaceState(null, '', window.location.pathname);
     if (error) {
       s.showToast('Google sign-in failed: ' + error);
       void s.hydrate();
@@ -29,32 +32,39 @@ export function useBootstrap(): void {
       return;
     }
     // Show what is stored right away, then fetch new mail in the background.
-    void s.hydrate().then(() => s.autoSync());
+    void s.hydrate().then(() => {
+      if (open && useStore.getState().emails.some((e) => e.id === open)) useStore.getState().openEmail(open);
+      return s.autoSync();
+    });
   }, []);
 }
 
-const AUTO_SYNC_MS = 5 * 60_000;
-
-/** Keep mail fresh without the Sync button: every few minutes while the tab is visible, and on return to the tab. */
+/**
+ * Keep mail fresh without the Sync button, as often as Settings → Sync frequency says, and on return to the tab.
+ * A background tab syncs too while browser notifications are on: otherwise no new mail arrives to announce.
+ */
 export function useAutoSync(): void {
+  const freq = useStore((s) => s.S.syncFreq);
+  const background = useStore((s) => s.S.notif.browser);
   useEffect(() => {
-    if (provider.isDemo) return;
+    if (provider.isDemo || freq === 'manual') return;
+    const every = (Number(freq) || 5) * 60_000;
     let last = Date.now();
     const run = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible' && !background) return;
       last = Date.now();
       void useStore.getState().autoSync();
     };
-    const t = setInterval(run, AUTO_SYNC_MS);
+    const t = setInterval(run, every);
     const onVisible = () => {
-      if (Date.now() - last > AUTO_SYNC_MS / 2) run();
+      if (document.visibilityState === 'visible' && Date.now() - last > every / 2) run();
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(t);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, []);
+  }, [freq, background]);
 }
 
 /** Keep the URL and document title in step with the current page, and honor back/forward. */
@@ -116,18 +126,6 @@ export function useClickOutside<T extends HTMLElement>(active: boolean, onOutsid
 
 const NOTIFIED_KEY = 'iflow.notified';
 
-/** Browser notifications are switched on and the browser allows them. */
-export const canNotify = (): boolean => typeof Notification !== 'undefined' && Notification.permission === 'granted' && useStore.getState().S.notif.browser;
-
-function show(a: Alert): void {
-  const n = new Notification(a.title, { body: a.body, tag: a.key, icon: '/favicon.svg' });
-  n.onclick = () => {
-    window.focus();
-    n.close();
-    if (a.emailId) useStore.getState().openEmail(a.emailId);
-  };
-}
-
 /**
  * Browser notifications, when switched on in Settings: new mail in a starred conversation,
  * calendar bookings and reminder emails, plus the interview reminders set for calendar events.
@@ -144,7 +142,7 @@ export function useBrowserNotifications(): void {
       // Mark mail seen even while off, so switching on later doesn't replay it.
       const alerts = mailAlerts(s.emails, seen).concat(reminderAlerts(s.events, s.S, fired, new Date()));
       save();
-      if (canNotify()) alerts.forEach(show);
+      if (canNotify()) alerts.forEach((a) => void show(a));
     };
     check();
     const unsub = useStore.subscribe((s, prev) => {

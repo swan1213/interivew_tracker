@@ -5,16 +5,16 @@ import type { AiKey, NotifKey, ThemePref, Tone, Tz } from '@/data/types';
 import { fmtT, hrs, TIME_ZONES, tzOffset } from '@/lib/time';
 import { cx } from '@/lib/util';
 import { Seg, Switch } from '@/ui/bits';
+import { askPermission, permission, sendTest } from '@/app/notifier';
 
 const NOTIF_ROWS: { k: NotifKey; title: string; desc: string; disabled?: boolean }[] = [
-  { k: 'newInvite', title: 'New interview invitations', desc: 'In-app notification' },
-  { k: 'avail', title: 'Availability requests', desc: 'In-app notification' },
-  { k: 'confirm', title: 'Interview confirmations', desc: 'In-app notification' },
-  { k: 'resched', title: 'Reschedules and cancellations', desc: 'In-app notification' },
-  { k: 'deadline', title: 'Assessment deadlines', desc: 'In-app notification' },
-  { k: 'offer', title: 'Offers', desc: 'In-app notification' },
+  { k: 'newInvite', title: 'New interview invitations', desc: 'In the notification bell' },
+  { k: 'avail', title: 'Availability requests', desc: 'In the notification bell' },
+  { k: 'confirm', title: 'Interview confirmations', desc: 'In the notification bell' },
+  { k: 'resched', title: 'Reschedules and cancellations', desc: 'In the notification bell' },
+  { k: 'deadline', title: 'Assessment deadlines', desc: 'In the notification bell' },
+  { k: 'offer', title: 'Offers', desc: 'In the notification bell' },
   { k: 'browser', title: 'Browser notifications', desc: 'Starred mail, calendar bookings and reminders' },
-  { k: 'desktop', title: 'Desktop notifications', desc: 'Prepared for a future integration', disabled: true },
   { k: 'email', title: 'Email digests', desc: 'Prepared for a future integration', disabled: true },
 ];
 const REM_ROWS: { m: string; title: string }[] = [
@@ -34,18 +34,33 @@ const THEME_TABS: { k: ThemePref; l: string }[] = [
   { k: 'auto', l: 'System' },
 ];
 
-const notifySupported = (): boolean => typeof Notification !== 'undefined';
+const BLOCKED = "Notifications are blocked for this site. Click the lock icon in the address bar, allow Notifications, then switch this on again.";
+const NOT_SHOWN = 'Not seeing it? Check that Windows or macOS allows notifications from your browser, and that Do Not Disturb / Focus is off.';
 
 /** Turn browser notifications on (asking the browser first) or off. */
 async function toggleBrowser(): Promise<void> {
   const st = useStore.getState();
   if (st.S.notif.browser) return st.setS((x) => void (x.notif.browser = false));
-  if (!notifySupported()) return st.say('This browser does not support notifications.');
-  const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
-  if (p !== 'granted') return st.say("Notifications are blocked for this site. Allow them in the browser's site settings, then switch this on again.");
+  const p = await askPermission();
+  if (p === 'unsupported') return st.say('This browser does not support notifications.');
+  if (p !== 'granted') return st.say(BLOCKED);
   st.setS((x) => void (x.notif.browser = true));
-  new Notification('Browser notifications are on', { body: 'You will be told about starred mail, calendar bookings and reminders.', icon: '/favicon.svg' });
+  await test();
 }
+
+async function test(): Promise<void> {
+  const st = useStore.getState();
+  if (permission() !== 'granted') return st.say(BLOCKED);
+  st.say((await sendTest()) ? 'Test notification sent. ' + NOT_SHOWN : 'The browser refused to show a notification. ' + BLOCKED);
+}
+
+const browserStatus = (on: boolean): string => {
+  const p = permission();
+  if (p === 'unsupported') return ' Not supported in this browser.';
+  if (p === 'denied') return ' Blocked by the browser for this site.';
+  if (!on) return '';
+  return ' Works while the app is open in a tab, even in the background.';
+};
 
 export function SettingsPage() {
   const st = useStore();
@@ -123,8 +138,15 @@ export function SettingsPage() {
                 <b>{r.title}</b>
                 <span>
                   {r.desc}
-                  {r.k === 'browser' && S.notif.browser && notifySupported() && Notification.permission !== 'granted' && ' (blocked by the browser)'}
+                  {r.k === 'browser' && browserStatus(S.notif.browser)}
                 </span>
+                {r.k === 'browser' && S.notif.browser && (
+                  <div style={{ marginTop: 6 }}>
+                    <button type="button" className="btn sm" onClick={() => void test()}>
+                      Send test
+                    </button>
+                  </div>
+                )}
               </div>
               <Switch
                 on={S.notif[r.k]}
