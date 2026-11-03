@@ -352,6 +352,25 @@ describe('receipts, calendar notices and booked interviews are not requests', ()
     expect(c('jane@acme.com', 'Next steps', "We'd like to invite you to a 30-minute call with our hiring manager.").cat).toBe('invite');
   });
 
+  it('a receipt that mentions a "potential offer of employment" is not an offer, and is signed by the team, not the company', () => {
+    const r = c('careers@recruiting.uhg.com', 'Senior Full Stack Software Engineer-2397689 Opening at UnitedHealth Group',
+      'Dear Tyler,\n\nThank you for applying for the position of Senior Full Stack Software Engineer, 2397689 with UnitedHealth Group.\n\nThere you will find full transparency into our hiring process, from applying for a position, preparing for an interview and a potential offer of employment.\n\nBest Regards,\n\nTalent Acquisition\n\nUnitedHealth Group is an Equal Employment Opportunity employer\n\nPlease do not reply.');
+    expect(r.cat).toBe('applied');
+    expect(r.company).toBe('UnitedHealth');
+    expect(c('jane@acme.com', 'Your offer', 'We are pleased to present this offer of employment.').cat).toBe('offer');
+  });
+
+  it('"not quite finding the perfect fit" is a rejection', () => {
+    const r = c('no-reply@us.greenhouse-mail.io', 'Thank you from Rise8',
+      "Thanks for your interest in the Senior Software Engineer (Palantir Foundry) position at Rise8! While we're not quite finding the perfect fit for you right now, there's good news – we'll be holding onto your resume for the next six months.\n\nAll the best,\n\nRise8");
+    expect(r.cat).toBe('rejected');
+  });
+
+  it('a company signing as its recruiting team is the company', () => {
+    expect(c('no-reply@hire.lever.co', 'Thank you for your application', 'Thanks for applying.\n\nBest regards,\nWelo Global Talent Acquisition Team').company).toBe('Welo Global');
+    expect(c('no-reply@x.example', 'Thank you for your application', "Thanks for applying.\n\nBest,\nTwo Six Technologies' Recruiting Team").company).toBe('Two Six Technologies');
+  });
+
   it('a receipt without receipt wording in the subject is still a receipt', () => {
     const r = c('no-reply@ashbyhq.com', 'Your FutureFit AI app is in good hands, Gregory!',
       "Thanks for applying for the Software Engineer role at FutureFit AI. We're excited to meet you! Our team will review yours for initial fit as soon as we can. We're committed to letting you know whether there's a fit either way.");

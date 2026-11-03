@@ -2,6 +2,8 @@ import { useEffect, useRef, type RefObject } from 'react';
 import { provider } from '@/data/provider';
 import { useStore } from '@/store/store';
 import { PAGE_TITLES, parsePath, pathFor } from '@/store/nav';
+import { mailAlerts, reminderAlerts, type Alert } from '@/lib/notify';
+import { loadJSON, saveJSON } from '@/lib/storage';
 
 /**
  * On first mount with a real provider: load the server snapshot, and handle the
@@ -110,4 +112,48 @@ export function useClickOutside<T extends HTMLElement>(active: boolean, onOutsid
     return () => document.removeEventListener('mousedown', h);
   }, [active, onOutside]);
   return ref;
+}
+
+const NOTIFIED_KEY = 'iflow.notified';
+
+/** Browser notifications are switched on and the browser allows them. */
+export const canNotify = (): boolean => typeof Notification !== 'undefined' && Notification.permission === 'granted' && useStore.getState().S.notif.browser;
+
+function show(a: Alert): void {
+  const n = new Notification(a.title, { body: a.body, tag: a.key, icon: '/favicon.svg' });
+  n.onclick = () => {
+    window.focus();
+    n.close();
+    if (a.emailId) useStore.getState().openEmail(a.emailId);
+  };
+}
+
+/**
+ * Browser notifications, when switched on in Settings: new mail in a starred conversation,
+ * calendar bookings and reminder emails, plus the interview reminders set for calendar events.
+ * What was announced is remembered in this browser so a reload doesn't repeat it.
+ */
+export function useBrowserNotifications(): void {
+  useEffect(() => {
+    const saved = loadJSON<{ mail?: string[]; rem?: string[] }>(NOTIFIED_KEY);
+    const seen = new Set(saved?.mail ?? []);
+    const fired = new Set(saved?.rem ?? []);
+    const save = () => saveJSON(NOTIFIED_KEY, { mail: [...seen].slice(-1500), rem: [...fired].slice(-500) });
+    const check = () => {
+      const s = useStore.getState();
+      // Mark mail seen even while off, so switching on later doesn't replay it.
+      const alerts = mailAlerts(s.emails, seen).concat(reminderAlerts(s.events, s.S, fired, new Date()));
+      save();
+      if (canNotify()) alerts.forEach(show);
+    };
+    check();
+    const unsub = useStore.subscribe((s, prev) => {
+      if (s.emails !== prev.emails || s.events !== prev.events) check();
+    });
+    const t = setInterval(check, 30_000);
+    return () => {
+      unsub();
+      clearInterval(t);
+    };
+  }, []);
 }

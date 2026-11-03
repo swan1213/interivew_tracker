@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildDemoData } from '@/data/demo';
 import { provider, setProvider } from '@/data/provider';
 import type { Page } from '@/data/types';
@@ -518,5 +518,28 @@ describe('App', () => {
     });
     expect(useStore.getState().members.some((m) => m.email === 'kim@example.com')).toBe(true);
     expect(container.innerHTML).toContain('Kim Lee');
+  });
+
+  it('browser notifications ask the browser, then switch on; a refusal leaves them off', async () => {
+    let answer: NotificationPermission = 'denied';
+    const shown: string[] = [];
+    vi.stubGlobal('Notification', Object.assign(function (this: object, title: string) { shown.push(title); }, {
+      permission: 'default',
+      requestPermission: async () => answer,
+    }));
+    reset({ page: 'settings' });
+    mount();
+    const sw = () => container.querySelector<HTMLElement>('button[aria-label="Browser notifications"]')!;
+    expect(sw().hasAttribute('disabled')).toBe(false);
+    await act(async () => sw().click());
+    expect(useStore.getState().S.notif.browser).toBe(false);
+    expect(useStore.getState().toast).toContain('blocked');
+    answer = 'granted';
+    await act(async () => sw().click());
+    expect(useStore.getState().S.notif.browser).toBe(true);
+    expect(shown).toEqual(['Browser notifications are on']);
+    await act(async () => sw().click());
+    expect(useStore.getState().S.notif.browser).toBe(false);
+    vi.unstubAllGlobals();
   });
 });

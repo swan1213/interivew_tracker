@@ -29,6 +29,12 @@ export function tzOffset(tz: Tz, at: Date = new Date()): number {
   return (utcOffsetMin(zone, at) - utcOffsetMin('America/New_York', at)) / 60;
 }
 
+/** The moment a stored ET date and decimal hour stand for. */
+export function etInstant(date: string, hour: number): Date {
+  const guess = new Date(Date.parse(date + 'T00:00:00Z') + hour * 3_600_000);
+  return new Date(guess.getTime() - utcOffsetMin('America/New_York', guess) * 60_000);
+}
+
 /** 13.5 → "1:30 PM" */
 export function fmtT(h: number): string {
   let H = Math.floor(h + 1e-9);

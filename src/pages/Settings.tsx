@@ -13,7 +13,7 @@ const NOTIF_ROWS: { k: NotifKey; title: string; desc: string; disabled?: boolean
   { k: 'resched', title: 'Reschedules and cancellations', desc: 'In-app notification' },
   { k: 'deadline', title: 'Assessment deadlines', desc: 'In-app notification' },
   { k: 'offer', title: 'Offers', desc: 'In-app notification' },
-  { k: 'browser', title: 'Browser notifications', desc: 'Prepared for a future integration', disabled: true },
+  { k: 'browser', title: 'Browser notifications', desc: 'Starred mail, calendar bookings and reminders' },
   { k: 'desktop', title: 'Desktop notifications', desc: 'Prepared for a future integration', disabled: true },
   { k: 'email', title: 'Email digests', desc: 'Prepared for a future integration', disabled: true },
 ];
@@ -33,6 +33,19 @@ const THEME_TABS: { k: ThemePref; l: string }[] = [
   { k: 'dark', l: 'Dark' },
   { k: 'auto', l: 'System' },
 ];
+
+const notifySupported = (): boolean => typeof Notification !== 'undefined';
+
+/** Turn browser notifications on (asking the browser first) or off. */
+async function toggleBrowser(): Promise<void> {
+  const st = useStore.getState();
+  if (st.S.notif.browser) return st.setS((x) => void (x.notif.browser = false));
+  if (!notifySupported()) return st.say('This browser does not support notifications.');
+  const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
+  if (p !== 'granted') return st.say("Notifications are blocked for this site. Allow them in the browser's site settings, then switch this on again.");
+  st.setS((x) => void (x.notif.browser = true));
+  new Notification('Browser notifications are on', { body: 'You will be told about starred mail, calendar bookings and reminders.', icon: '/favicon.svg' });
+}
 
 export function SettingsPage() {
   const st = useStore();
@@ -108,9 +121,17 @@ export function SettingsPage() {
             <div className="srow" key={r.k}>
               <div className="tx">
                 <b>{r.title}</b>
-                <span>{r.desc}</span>
+                <span>
+                  {r.desc}
+                  {r.k === 'browser' && S.notif.browser && notifySupported() && Notification.permission !== 'granted' && ' (blocked by the browser)'}
+                </span>
               </div>
-              <Switch on={S.notif[r.k]} disabled={r.disabled} label={r.title} onToggle={() => st.setS((x) => void (x.notif[r.k] = !x.notif[r.k]))} />
+              <Switch
+                on={S.notif[r.k]}
+                disabled={r.disabled}
+                label={r.title}
+                onToggle={() => (r.k === 'browser' ? void toggleBrowser() : st.setS((x) => void (x.notif[r.k] = !x.notif[r.k])))}
+              />
             </div>
           ))}
         </section>

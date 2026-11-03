@@ -10,7 +10,7 @@ import type { Classification, ParsedMessage, TimeHit } from '../types';
 import { cleanBody, stripQuoted } from '../mime';
 
 /** Bumped whenever the rules change, so mail they classified earlier is classified again (no model involved). */
-export const RULES_VERSION = 14;
+export const RULES_VERSION = 15;
 
 /** Newsletter and blog platforms: their posts talk about offers and interviews but never make one. */
 const NEWSLETTER_FROM = /@([\w-]+\.)*(substack\.com|beehiiv\.com|medium\.com|ghost\.io|buttondown\.email|convertkit\.com|kit\.com|mailchimp\.com|mcsv\.net|mailerlite\.com|sendinblue\.com|brevo\.com|hubspotemail\.net)$/i;
@@ -102,7 +102,7 @@ function cleanOrg(s: string): string {
   let words = s.replace(/\(.*?\)/g, '').replace(/[|•·].*$/, '').trim().split(/\s+/);
   while (words.length > 1 && ORG_WORDS.test(words[words.length - 1])) words.pop();
   while (words.length > 1 && /^(the|at|from)$/i.test(words[0])) words.shift();
-  return words.join(' ').replace(/[,.;:]+$/, '').trim();
+  return words.join(' ').replace(/[,.;:]+$/, '').replace(/(?<=\w)['’]s?$/, '').trim();
 }
 
 /** Company name from signature, sender name, subject, body or domain, in that order. */
@@ -125,7 +125,11 @@ export function extractCompany(p: ParsedMessage, body: string): string {
     }
     const atm = line.match(/\b(?:at|@)\s+([A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,2})$/);
     if (atm) return cleanOrg(atm[1]);
-    if (/^[A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,3}$/.test(line) && !TITLE_WORD.test(line)) {
+    // "Freedom Mortgage Talent Acquisition Department": the company before its team.
+    const team = line.match(/^(?:The )?([A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,2})\s+(?:[Tt]alent [Aa]cquisition|[Rr]ecruiting|[Hh]uman [Rr]esources)(?:\s+([Tt]eam|[Dd]epartment))?$/);
+    if (team && !/^(our|your|member|vp|head)\b/i.test(team[1]) && !ORG_WORDS.test(team[1]) && !TITLE_WORD.test(team[1])) return cleanOrg(team[1]);
+    // "Talent Acquisition" signing is the team, not the company.
+    if (/^[A-Z][\w&.'’-]+(?:\s+[A-Z][\w&.'’-]+){0,3}$/.test(line) && !TITLE_WORD.test(line) && !line.split(/\s+/).every((w) => ORG_WORDS.test(w))) {
       const c = cleanOrg(line);
       if (c.length >= 3) return c;
     }
@@ -165,7 +169,8 @@ export function extractCompany(p: ParsedMessage, body: string): string {
   if (bodyM) return cleanOrg(bodyM[1]);
   const dom = p.fromAddr.split('@')[1] || '';
   const label = dom.split('.')[0].replace(/-(recruiting|talent|careers?|jobs?|hiring|people|hr|mail|email)$/i, '');
-  if (!label || /^(gmail|outlook|hotmail|yahoo|icloud|proton|mail)$/i.test(label)) return '';
+  // Mail services and sending subdomains ("noreply.jobs2web.com", "candidates.workablemail.com") are not the company.
+  if (!label || /^(gmail|outlook|hotmail|yahoo|icloud|proton|e?mail\d*|no-?reply|candidates|myworkday|notifications?|jobs?|careers?)$/i.test(label)) return '';
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
@@ -292,9 +297,9 @@ export function classifyHeuristic(p: ParsedMessage, now: Date = new Date()): Cla
   const asking = sentences.filter((s) => !LATER.test(s));
   const asks = (re: RegExp) => asking.some((s) => re.test(s));
   const calNotice = CAL_NOTICE.test(p.subject);
-  const strongOffer = inPlain(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|offer of employment)\b/i);
+  const strongOffer = inPlain(/\b(offer letter|pleased to (offer|extend)|extend (you )?(an|the) offer|delighted to extend|(?<!\b(potential|possible|eventual|future) )offer of employment)\b/i);
   const looseOffer = inPlain(/\b(job offer|formal offer)\b/i);
-  const rejectHit = has(/\b(not (be )?moving forward|move forward with ((a few|some|several|the) )?other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|(have|has) filled the (position|role)|(role|position) is no longer (open|available)|pursue other candidates)\b/i);
+  const rejectHit = has(/\b(not (be )?moving forward|move forward with ((a few|some|several|the) )?other|proceed with other candidates|unfortunately|not selected|no longer under consideration|regret to inform|decided not to|will not be (moving|proceeding)|position has been filled|(have|has) filled the (position|role)|(role|position) is no longer (open|available)|pursue other candidates|not (quite )?(finding|found|seeing) (the|a|an) (perfect|right|good|strong|ideal) (fit|match))\b/i);
   const reschedHit = !calNotice && asking.some((s) => !RESCHED_OPTION.test(s) && /\breschedul\w*|\bmove (our|the|this|your|[a-z]+day'?s) (interview|call|meeting|conversation)|\bnew time\b|\bpush (back|our)/i.test(s));
   const confirmedHit = has(/\b(interview|call|session|meeting|conversation)\b[^.\n]{0,60}\b(is |has been )?(confirmed|scheduled|booked|set)\b|\bconfirmed:|\bconfirmation\b[^.\n]{0,40}\binterview|\b(interview|call|meeting|time) is confirmed\b|\b(pleased|happy|excited|writing) to confirm (your|our|the) (upcoming )?(\w+ ){0,3}(interview|call|meeting|conversation|chat)\b|\bcalendar invite\b/i);
   // "Feel free to update your profile at any time" and "provide an update by the time..." are not asking for times,
