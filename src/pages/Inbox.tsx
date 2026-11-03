@@ -5,7 +5,7 @@ import { getAcct, visibleAll } from '@/store/selectors';
 import { provider } from '@/data/provider';
 import { CAT, CAT_KEYS, INBOX_TITLES, TONES } from '@/data/constants';
 import type { CalEvent, Cat, Email, ThreadMsg } from '@/data/types';
-import { effCat, filterEmails, firstLink, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
+import { effCat, filterEmails, firstLink, rangeDays, RANGE_OPTIONS, type RangeFilter, isNoReply, needsAction, participants, previewOf, replySubject, senderName, tidyBody } from '@/lib/mail';
 import { activeEvents, isInterviewMeeting, meetingMentions } from '@/lib/calendar';
 import { selfServe } from '@/lib/links';
 import { addD, lab } from '@/lib/time';
@@ -38,11 +38,11 @@ function MessageList({ rows }: { rows: Email[] }) {
   // Mailboxes whose access ran out: changes made here can't reach them until they are connected again.
   const lost = st.accts.filter((a) => a.reconnect && (st.acctFilter === 'all' || st.acctFilter === a.id));
   // Read / unread has its own control in the list header, so it isn't listed here.
-  const narrowed = [st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.rangeFilter !== 'all' && 'Date range', st.savedKey && 'Saved view'].filter(Boolean);
+  const narrowed = [st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.savedKey && 'Saved view'].filter(Boolean);
 
   // Paging starts over whenever the list itself changes (another view, account, search or filter).
   const readState: ReadState = st.unreadOnly ? 'unread' : st.readOnly ? 'read' : 'all';
-  const listKey = [st.view, st.acctFilter, st.peer, st.q, readState, narrowed.join()].join('|');
+  const listKey = [st.view, st.acctFilter, st.peer, st.q, readState, narrowed.join(), st.rangeFilter, st.rangeFrom, st.rangeTo].join('|');
   const [pg, setPg] = useState({ key: listKey, n: 0 });
   if (pg.key !== listKey) setPg({ key: listKey, n: 0 });
   const listRef = useRef<HTMLDivElement>(null);
@@ -239,7 +239,75 @@ function SelectBar({ shown, picked, pick, mark, readState, setReadState }: { sho
         </>
       )}
       <span className="sp" />
+      <DatePick compact={picked.length > 0} />
       <Seg value={readState} options={READ_STATES} onChange={setReadState} ariaLabel="Show read or unread mail" />
+    </div>
+  );
+}
+
+/** "Nov 3", or "Oct 28 – Nov 3"; open ends read "Since Oct 28" / "Until Nov 3". */
+function rangeText(from: string, to: string): string {
+  const d = (x: string) => lab(x).slice(5);
+  if (from && to) return from === to ? d(from) : d(from) + ' – ' + d(to);
+  return from ? 'Since ' + d(from) : 'Until ' + d(to);
+}
+
+/** Received-date filter for the list: quick ranges, or any From / To days picked on a calendar. Compact (icon only) while mail is selected. */
+function DatePick({ compact }: { compact: boolean }) {
+  const st = useStore();
+  const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+  const ref = useClickOutside<HTMLDivElement>(open, close);
+  const [from, to] = rangeDays(st, st.today);
+  const on = st.rangeFilter !== 'all' && !!(from || to);
+  const label = !on ? '' : st.rangeFilter === 'custom' ? rangeText(from, to) : RANGE_OPTIONS.find((o) => o.k === st.rangeFilter)?.l || '';
+  const preset = (k: RangeFilter) => {
+    st.patch({ rangeFilter: k, rangeFrom: '', rangeTo: '' });
+    close();
+  };
+  // Typing a day switches to a custom range that starts from what is showing now.
+  const setDay = (end: 'from' | 'to', v: string) =>
+    st.patch({ rangeFilter: 'custom', rangeFrom: end === 'from' ? v : from, rangeTo: end === 'to' ? v : to });
+  return (
+    <div className="datepick" ref={ref}>
+      <button
+        type="button"
+        className={cx('dpbtn', on && 'on', compact && 'compact')}
+        onClick={() => setOpen(!open)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={on ? 'Received: ' + label + '. Change date filter' : 'Filter by date'}
+        title={on ? 'Received ' + label : 'Filter by date'}
+      >
+        <Icon name="cal" sm />
+        {on && !compact && <span>{label}</span>}
+      </button>
+      {on && !compact && (
+        <button type="button" className="dpx" onClick={() => preset('all')} aria-label="Clear date filter" title="Clear date filter">
+          <Icon name="x" sm />
+        </button>
+      )}
+      {open && (
+        <div className="acmenu dpmenu" role="dialog" aria-label="Filter by received date">
+          {RANGE_OPTIONS.filter((o) => o.k !== 'custom').map((o) => (
+            <button key={o.k} type="button" className={cx('acitem', st.rangeFilter === o.k && 'on')} onClick={() => preset(o.k)}>
+              <span style={{ flex: 1 }}>{o.l}</span>
+              {st.rangeFilter === o.k && <Icon name="check" sm />}
+            </button>
+          ))}
+          <div className="dpcustom">
+            <b>Custom range</b>
+            <label>
+              <span>From</span>
+              <input type="date" className="inp" value={st.rangeFilter === 'all' ? '' : from} max={to || st.today} onChange={(e) => setDay('from', e.target.value)} aria-label="From date" />
+            </label>
+            <label>
+              <span>To</span>
+              <input type="date" className="inp" value={st.rangeFilter === 'all' ? '' : to} min={from || undefined} max={st.today} onChange={(e) => setDay('to', e.target.value)} aria-label="To date" />
+            </label>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

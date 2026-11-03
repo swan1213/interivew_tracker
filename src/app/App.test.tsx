@@ -549,4 +549,29 @@ describe('App', () => {
     expect(useStore.getState().S.notif.browser).toBe(false);
     vi.unstubAllGlobals();
   });
+
+  it('the date picker filters the list by received day, by quick range or From / To', () => {
+    reset({ page: 'inbox', view: 'inbox' });
+    mount();
+    const count = () => container.querySelectorAll('.er').length;
+    const before = count();
+    click('button[aria-label="Filter by date"]');
+    const today = [...container.querySelectorAll<HTMLElement>('.dpmenu .acitem')].find((b) => b.textContent === 'Today')!;
+    act(() => today.click());
+    expect(useStore.getState().rangeFilter).toBe('today');
+    expect(count()).toBeLessThan(before);
+    expect(container.querySelector('.dpbtn')?.textContent).toBe('Today');
+    // A From day makes a custom range.
+    click('.dpbtn');
+    const fromBox = container.querySelector<HTMLInputElement>('input[aria-label="From date"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(fromBox, '2026-10-20');
+      fromBox.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(useStore.getState()).toMatchObject({ rangeFilter: 'custom', rangeFrom: '2026-10-20', rangeTo: '2026-10-26' });
+    expect(container.querySelector('.dpbtn')?.textContent).toBe('Oct 20 – Oct 26');
+    click('button[aria-label="Clear date filter"]');
+    expect(useStore.getState().rangeFilter).toBe('all');
+    expect(count()).toBe(before);
+  });
 });
