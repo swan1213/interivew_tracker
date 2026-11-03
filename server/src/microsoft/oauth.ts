@@ -1,6 +1,6 @@
 import { cfg } from '../config';
 import { sha256b64url } from '../crypto';
-import type { TokenSet, UserInfo } from '../google/oauth';
+import { TokenError, type TokenSet, type UserInfo } from '../google/oauth';
 
 /** Delegated Microsoft Graph permissions: read and file mail, send on approval, and the calendar. */
 export const MS_SCOPES = ['openid', 'email', 'profile', 'offline_access', 'User.Read', 'Mail.ReadWrite', 'Mail.Send', 'Calendars.ReadWrite'];
@@ -30,7 +30,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
     body: new URLSearchParams({ client_id: cfg.msClientId, client_secret: cfg.msClientSecret, scope: MS_SCOPES.join(' '), ...body }).toString(),
   });
   const j = (await r.json()) as TokenSet & { error?: string; error_description?: string };
-  if (!r.ok || j.error) throw new Error('Microsoft token error: ' + (j.error_description?.split('\r\n')[0] || j.error || r.status));
+  if (!r.ok || j.error) throw new TokenError('Microsoft token error: ' + (j.error_description?.split('\r\n')[0] || j.error || r.status), j.error || String(r.status));
   return j;
 }
 

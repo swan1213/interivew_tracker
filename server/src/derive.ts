@@ -114,6 +114,7 @@ export function accountView(a: StoredAccount, now: Date, color = a.color): Accou
     sendAs: a.name || a.email,
     calendar: hasCalendar(a),
     sync: a.lastSync ? 'Synced ' + relLabel(a.lastSync, now).toLowerCase().replace(/^just now$/, 'just now') : 'Not synced yet',
+    ...(a.authError ? { reconnect: a.authError } : {}),
   };
 }
 

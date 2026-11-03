@@ -73,6 +73,16 @@ export function authUrl(state: string, verifier: string, purpose: AuthPurpose = 
   return 'https://accounts.google.com/o/oauth2/v2/auth?' + q.toString();
 }
 
+/** A refused token request; `code` is the OAuth error, e.g. invalid_grant for an expired or revoked grant. */
+export class TokenError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+  }
+}
+
+/** The mailbox's access is gone for good (expired, revoked or password changed): only connecting it again helps. */
+export const isGrantRevoked = (e: unknown): boolean => e instanceof TokenError && e.code === 'invalid_grant';
+
 async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
   const r = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -80,7 +90,7 @@ async function tokenRequest(body: Record<string, string>): Promise<TokenSet> {
     body: new URLSearchParams(body).toString(),
   });
   const j = (await r.json()) as TokenSet & { error?: string; error_description?: string };
-  if (!r.ok || j.error) throw new Error('Google token error: ' + (j.error_description || j.error || r.status));
+  if (!r.ok || j.error) throw new TokenError('Google token error: ' + (j.error_description || j.error || r.status), j.error || String(r.status));
   return j;
 }
 

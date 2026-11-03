@@ -35,6 +35,14 @@ export function Accounts() {
               </div>
               <span className="tag">{a.provider}</span>
             </div>
+            {a.reconnect && (
+              <div className="act lost" role="alert">
+                <span>{a.reconnect.replace(/ Reconnect it in Connected Accounts\.$/, '')} Sync, read and star changes stop until it is connected again.</span>
+                <button type="button" className="btn sm pri" onClick={() => st.addAccount(a.provider === 'Outlook' ? 'Outlook' : 'Gmail')}>
+                  Reconnect
+                </button>
+              </div>
+            )}
             <div className="fgrid" style={{ margin: 0 }}>
               <Fact label="Sync">{a.sync}</Fact>
               <Fact label="Unread">{unreadCount(all, a.id)}</Fact>

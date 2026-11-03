@@ -370,7 +370,7 @@ export const useStore = create<AppState>()((set, get) => {
         compOpen: false, aiDraft: '', variant: 0, mods: NO_MODS, chosen: [], notifOpen: false, acMenuOpen: false,
         emails: s.emails.map((x) => (x.id === id ? { ...x, unread: false } : x)),
       });
-      if (e?.unread) void hold([id], { unread: false }, provider.markRead?.(id)).catch(() => undefined);
+      if (e?.unread) void hold([id], { unread: false }, provider.markRead?.(id)).catch((err: Error) => showToast('Could not mark as read in your mailbox: ' + err.message));
     },
     setRead: (ids, read) => {
       // Only conversations whose state changes; the list updates now and goes back if the mailbox refuses.
@@ -379,9 +379,9 @@ export const useStore = create<AppState>()((set, get) => {
       const flip = (unread: boolean) => set((s) => ({ emails: s.emails.map((e) => (todo.has(e.id) ? { ...e, unread } : e)) }));
       flip(!read);
       showToast((todo.size === 1 ? '1 conversation' : todo.size + ' conversations') + ' marked as ' + (read ? 'read' : 'unread'));
-      void hold([...todo], { unread: !read }, provider.setRead?.([...todo], read)).catch(() => {
+      void hold([...todo], { unread: !read }, provider.setRead?.([...todo], read)).catch((err: Error) => {
         flip(read);
-        showToast('Could not mark as ' + (read ? 'read' : 'unread') + ' in your mailbox.');
+        showToast('Could not mark as ' + (read ? 'read' : 'unread') + ' in your mailbox: ' + err.message);
       });
     },
     toggleStar: (id) => {

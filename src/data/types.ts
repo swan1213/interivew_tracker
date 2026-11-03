@@ -42,6 +42,8 @@ export interface Account {
   sync: string;
   /** Google Calendar sync is allowed for this mailbox (undefined in the demo). */
   calendar?: boolean;
+  /** Why the mailbox must be connected again (its access expired or was revoked); changes can't reach it until then. */
+  reconnect?: string;
 }
 
 export interface Attachment { name: string; size: string }

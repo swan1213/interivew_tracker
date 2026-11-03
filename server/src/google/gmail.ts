@@ -6,7 +6,7 @@ import type { StoredAccount } from '../types';
 import { msRefreshAccessToken } from '../microsoft/oauth';
 import { OutlookMail } from '../microsoft/mail';
 import { MockGmail } from './mock';
-import { refreshAccessToken } from './oauth';
+import { isGrantRevoked, refreshAccessToken, type TokenSet } from './oauth';
 
 /** The slice of Gmail the app needs. Real and mock implementations share it. */
 export interface GmailApi {
@@ -70,13 +70,24 @@ export const isRateLimited = (status: number, text: string): boolean => status =
 export async function accessTokenFor(acct: StoredAccount): Promise<string> {
   const secret = tokenSecret();
   if (acct.expiresAt - Date.now() > 60_000) return decrypt(acct.accessToken, secret);
-  const t = await (acct.provider === 'Outlook' ? msRefreshAccessToken : refreshAccessToken)(decrypt(acct.refreshToken, secret));
+  let t: TokenSet;
+  try {
+    t = await (acct.provider === 'Outlook' ? msRefreshAccessToken : refreshAccessToken)(decrypt(acct.refreshToken, secret));
+  } catch (e) {
+    if (!isGrantRevoked(e)) throw e;
+    // The mailbox has to be connected again; say so everywhere it is used, not just in this request.
+    const authError = (acct.provider === 'Outlook' ? 'Microsoft' : 'Google') + ' access for ' + acct.email + ' expired or was revoked. Reconnect it in Connected Accounts.';
+    acct.authError = authError;
+    await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, authError } : a)));
+    throw new Error(authError);
+  }
   acct.accessToken = encrypt(t.access_token, secret);
   acct.expiresAt = Date.now() + t.expires_in * 1000;
   if (t.refresh_token) acct.refreshToken = encrypt(t.refresh_token, secret);
+  delete acct.authError;
   // Only the token fields: the rest of the record may have changed since this copy was read.
   const { accessToken, expiresAt, refreshToken } = acct;
-  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, accessToken, expiresAt, refreshToken } : a)));
+  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, accessToken, expiresAt, refreshToken, authError: undefined } : a)));
   return t.access_token;
 }
 

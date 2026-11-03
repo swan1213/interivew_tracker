@@ -35,6 +35,8 @@ function MessageList({ rows }: { rows: Email[] }) {
   const st = useStore();
   const title = st.peer ? 'All mail with ' + st.peer : st.acctFilter !== 'all' && st.view === 'inbox' ? getAcct(st.accts, st.acctFilter).label : INBOX_TITLES[st.view];
   // Filters set from elsewhere (a dashboard tile, say) have no picker here, so say they are on and offer to clear them.
+  // Mailboxes whose access ran out: changes made here can't reach them until they are connected again.
+  const lost = st.accts.filter((a) => a.reconnect && (st.acctFilter === 'all' || st.acctFilter === a.id));
   // Read / unread has its own control in the list header, so it isn't listed here.
   const narrowed = [st.actionOnly && 'Action required', st.catFilter !== 'all' && CAT[st.catFilter].l, st.priFilter !== 'all' && st.priFilter + ' priority', st.coFilter !== 'all' && st.coFilter, st.ivFilter !== 'all' && 'Interview ' + st.ivFilter, st.rangeFilter !== 'all' && 'Date range', st.savedKey && 'Saved view'].filter(Boolean);
 
@@ -94,6 +96,16 @@ function MessageList({ rows }: { rows: Email[] }) {
           readState={readState}
           setReadState={(r) => st.patch({ unreadOnly: r === 'unread', readOnly: r === 'read' })}
         />
+        {lost.length > 0 && (
+          <div className="narrow lost" role="alert">
+            <span title={lost.map((a) => a.reconnect).join('\n')}>
+              {lost.map((a) => a.addr).join(', ')} {lost.length === 1 ? 'needs' : 'need'} reconnecting: read and star changes can't be saved.
+            </span>
+            <button type="button" className="lnk" onClick={() => st.addAccount(lost[0].provider === 'Outlook' ? 'Outlook' : 'Gmail')}>
+              Reconnect
+            </button>
+          </div>
+        )}
         {narrowed.length > 0 && (
           <div className="narrow">
             <span>Filtered: {narrowed.join(', ')}</span>

@@ -14,6 +14,8 @@ export interface StoredAccount {
   expiresAt: number;
   lastSync: string | null;
   scopes: string[];
+  /** Set when the provider refused the refresh token (expired or revoked); cleared by connecting again. */
+  authError?: string;
 }
 
 export interface Attachment { name: string; size: string }

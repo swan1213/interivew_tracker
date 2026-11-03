@@ -183,6 +183,24 @@ describe('App', () => {
     expect(subjects()).toHaveLength(6);
   });
 
+  it('a mailbox that lost access shows a reconnect banner in the inbox and on its account card', () => {
+    const d = buildDemoData();
+    const lost = 'Google access for ' + d.accts[0].addr + ' expired or was revoked. Reconnect it in Connected Accounts.';
+    reset({ page: 'inbox', accts: d.accts.map((a, i) => (i === 0 ? { ...a, reconnect: lost } : a)) });
+    mount();
+    const banner = container.querySelector('.narrow.lost');
+    expect(banner?.textContent).toContain(d.accts[0].addr + ' needs reconnecting');
+    // Another account's inbox doesn't show it.
+    act(() => useStore.getState().patch({ acctFilter: d.accts[1].id }));
+    expect(container.querySelector('.narrow.lost')).toBeNull();
+    reset({ page: 'accounts', accts: d.accts.map((a, i) => (i === 0 ? { ...a, reconnect: lost } : a)) });
+    mount();
+    const card = container.querySelector('.act.lost');
+    expect(card?.textContent).toContain('expired or was revoked');
+    expect(card?.querySelector('button')?.textContent).toBe('Reconnect');
+    expect(container.querySelectorAll('.act.lost')).toHaveLength(1);
+  });
+
   it('the Starred view lists starred conversations, and starring one adds it', () => {
     const base = buildDemoData().emails[0];
     const mail = Array.from({ length: 4 }, (_, i) => ({ ...base, id: 'm' + i, subject: 'Message ' + i, starred: i === 2 }));
