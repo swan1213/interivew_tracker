@@ -207,7 +207,6 @@ export function SettingsPage() {
               Sync frequency
             </label>
             <select id="sy" className="sel" style={{ width: '100%', height: 32 }} value={S.syncFreq} onChange={(e) => st.setS((x) => void (x.syncFreq = e.target.value))}>
-              <option value="1">Every minute</option>
               <option value="5">Every 5 minutes</option>
               <option value="15">Every 15 minutes</option>
               <option value="manual">Manual only</option>

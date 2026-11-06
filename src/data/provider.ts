@@ -16,6 +16,8 @@ export interface SyncResult {
   /** Accounts Gmail asked to slow down; sync again after a short wait. */
   throttled?: number;
   errors?: string[];
+  /** Changes when the server's data does; the same as the last load means there is nothing to reload. */
+  rev?: string;
 }
 
 /**

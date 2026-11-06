@@ -106,16 +106,18 @@ Outlook.com (personal) and Microsoft 365 (work or school) mailboxes work like Gm
 
 ### Vercel
 
-`vercel.json` runs `npm run build:vercel`, which builds the site and bundles the API into one serverless function at `/api` (`scripts/vercel-build.mjs`, Build Output API). Vercel's disk does not persist, so accounts, mail, the team and pending sign-ins live in Upstash Redis instead of `server/data/`.
+`vercel.json` runs `npm run build:vercel`, which builds the site and bundles the API into one serverless function at `/api` (`scripts/vercel-build.mjs`, Build Output API). Vercel's disk does not persist, so accounts, mail, the team and pending sign-ins live in MongoDB instead of `server/data/`.
 
-1. In the Vercel project, *Storage → Create Database → Upstash (Redis)* and connect it to the project. That sets `KV_REST_API_URL` and `KV_REST_API_TOKEN` (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` work too).
+1. Create a free cluster on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas). Add a database user, and under *Network Access* allow `0.0.0.0/0` (Vercel has no fixed address). Copy the connection string from *Connect → Drivers*, put in the password, and set it in Vercel as `MONGODB_URI`. Upstash Redis still works if `MONGODB_URI` is not set (`KV_REST_API_URL` and `KV_REST_API_TOKEN`, or `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`).
 2. *Settings → Environment Variables*: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ADMIN_EMAIL`, `TOKEN_SECRET` (a long random string; required here, and changing it signs everyone out and invalidates stored Google tokens), `APP_URL=https://<your-app>.vercel.app`, optionally `ANTHROPIC_API_KEY`.
 3. In Google Cloud Console add the redirect URI `https://<your-app>.vercel.app/api/auth/google/callback`.
 4. Redeploy. `https://<your-app>.vercel.app/api/health` should return `"configured":true`.
 
 A sync must finish within the function's 60-second limit; lower `GMAIL_SYNC_BUDGET_MS` if it times out.
 
-Keep the production Redis credentials out of your local `.env`, or `npm run dev` reads and writes the live workspace. Tests never load `.env`.
+Keep the production database credentials out of your local `.env`, or `npm run dev` reads and writes the live workspace. Tests never load `.env`.
+
+**Staying inside a free database plan.** A sync with nothing new reads and writes no mailbox, and the browser reloads mail only when it changed. Every stored email still counts: with the default settings all mail is kept, so any new email moves its whole mailbox. Set `GMAIL_JOB_FILTER=on` to keep only job-related mail. That makes mailboxes far smaller and lets unrelated mail pass without touching them; mail stored before you turn it on stays.
 
 ### Provider boundary
 

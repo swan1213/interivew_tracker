@@ -64,6 +64,21 @@ describe('marking a selection read or unread', () => {
     expect((await req('/mail/read-state', 'POST', { ids: ['g:t'] })).status).toBe(400);
   });
 
+  it('tells the browser there is nothing to reload when a sync changed nothing, and does when one did', async () => {
+    const rev = async () => (await (await req('/snapshot')).json()).snapshot.rev as string;
+    const sync = async () => (await (await req('/sync', 'POST', {})).json()) as { rev: string; newMessages: number };
+    await sync();
+    await sync(); // settled: labels of all mail are known
+    const loaded = await rev();
+    expect(loaded).toBeTruthy();
+    expect((await sync()).rev).toBe(loaded);
+
+    const { readAccounts, updateAccounts } = await import('./store');
+    const [a] = await readAccounts();
+    await updateAccounts((l) => l.map((x) => (x.id === a.id ? { ...x, mailRev: 'changed' } : x)));
+    expect((await sync()).rev).not.toBe(loaded);
+  });
+
   it('needs a member or admin', async () => {
     const r = await fetch(base + '/mail/read-state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [], unread: true }) });
     expect(r.status).toBe(401);

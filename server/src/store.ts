@@ -2,11 +2,12 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cfg } from './config';
-import type { MailStore, StoredAccount } from './types';
+import { mongoBackend } from './mongo';
+import type { MailStore, StoredAccount, SyncIndex } from './types';
 
 /**
  * Key-value storage for accounts, mail and the team. JSON files in the data
- * directory by default; Upstash Redis when its REST credentials are set, which
+ * directory by default; MongoDB (or Upstash Redis) when configured, which
  * serverless hosts (Vercel) need because their disk does not persist.
  */
 interface Backend {
@@ -49,10 +50,13 @@ function fileBackend(): Backend {
   };
 }
 
+export const STORAGE_FULL = 'Storage is blocked: the Upstash database has used up its plan allowance. Mail cannot load or save until the allowance resets or a new database is connected.';
+
 function redisBackend(url: string, token: string): Backend {
   const cmd = async (...args: string[]): Promise<unknown> => {
     const r = await fetch(url, { method: 'POST', headers: { Authorization: 'Bearer ' + token }, body: JSON.stringify(args) });
     const j = (await r.json().catch(() => ({}))) as { result?: unknown; error?: string };
+    if (/plan limits?\b/i.test(j.error || '')) throw new Error(STORAGE_FULL);
     if (!r.ok || j.error) throw new Error('Redis error: ' + (j.error || r.status));
     return j.result;
   };
@@ -75,21 +79,22 @@ let backend: Backend | null = null;
 let backendFor = '';
 function store(): Backend {
   // Fake Google (dev:mock, tests) must never write its demo mailbox into a real Redis named in .env.
+  const mongoUri = cfg.mock ? '' : cfg.mongoUri;
   const redisUrl = cfg.mock ? '' : cfg.redisUrl;
-  const want = redisUrl ? 'redis:' + redisUrl : 'file:' + cfg.dataDir;
+  const want = mongoUri ? 'mongo:' + mongoUri + '/' + cfg.mongoDb : redisUrl ? 'redis:' + redisUrl : 'file:' + cfg.dataDir;
   if (backend && backendFor === want) return backend;
-  if (!redisUrl && process.env.VERCEL) {
-    throw new Error('No storage configured. Vercel does not keep files, so add Upstash Redis (Vercel → Storage) to set KV_REST_API_URL and KV_REST_API_TOKEN, then redeploy.');
+  if (!mongoUri && !redisUrl && process.env.VERCEL) {
+    throw new Error('No storage configured. Vercel does not keep files, so set MONGODB_URI to a MongoDB connection string, then redeploy.');
   }
-  backend = redisUrl ? redisBackend(redisUrl, cfg.redisToken) : fileBackend();
+  backend = mongoUri ? mongoBackend(mongoUri, cfg.mongoDb) : redisUrl ? redisBackend(redisUrl, cfg.redisToken) : fileBackend();
   backendFor = want;
   return backend;
 }
 
-// Large values (a mailbox holds thousands of messages) are gzipped: about a sixth of the size,
-// well inside Redis request limits, and faster to move on every sync and snapshot.
+// All but small values are gzipped: about a sixth of the size, well inside Redis request limits,
+// and every byte moved counts against the database's bandwidth allowance.
 const GZ = 'gz1:';
-const GZ_FROM = 64 * 1024;
+const GZ_FROM = 4 * 1024;
 
 export async function readJson<T>(name: string, fallback: T): Promise<T> {
   const raw = await store().get(name);
@@ -124,3 +129,7 @@ export function updateAccounts(fn: (accts: StoredAccount[]) => StoredAccount[]):
 export const mailFile = (accountId: string): string => 'mail-' + accountId + '.json';
 export const readMail = (accountId: string): Promise<MailStore> => readJson<MailStore>(mailFile(accountId), { threads: {}, skipped: [], lastSync: null });
 export const writeMail = (accountId: string, m: MailStore): Promise<void> => writeJson(mailFile(accountId), m);
+
+export const syncIndexFile = (accountId: string): string => 'sync-' + accountId + '.json';
+export const readSyncIndex = (accountId: string): Promise<SyncIndex | null> => readJson<SyncIndex | null>(syncIndexFile(accountId), null);
+export const writeSyncIndex = (accountId: string, x: SyncIndex): Promise<void> => writeJson(syncIndexFile(accountId), x);

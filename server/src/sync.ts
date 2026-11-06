@@ -1,10 +1,11 @@
+import { createHash } from 'node:crypto';
 import { classifyMessage, classifySent, modelWanted } from './classify';
 import { isJobAlert, isJobRelated, RULES_VERSION } from './classify/heuristic';
 import { cfg } from './config';
 import { GmailError, gmailFor, isRateLimitError, type GmailApi } from './google/gmail';
 import { parseMessage } from './mime';
-import { readMail, updateAccounts, writeMail } from './store';
-import type { MailStore, StoredAccount, StoredThread } from './types';
+import { readMail, readSyncIndex, updateAccounts, writeMail, writeSyncIndex } from './store';
+import type { MailStore, ParsedMessage, StoredAccount, StoredThread, SyncIndex } from './types';
 
 /** The labels the UI mirrors, and the Gmail search that finds each. Order matters below. */
 const LABEL_QUERIES: Record<string, string> = { UNREAD: 'is:unread', STARRED: 'is:starred', INBOX: 'in:inbox' };
@@ -41,6 +42,8 @@ const FETCH_RESERVE_MS = 15_000;
 const LABEL_WINDOW = 500;
 /** Time kept back from model calls (each can take several seconds) for the last ones to finish and the save. */
 const MODEL_RESERVE_MS = 12_000;
+/** A sync that found nothing new saves its time at most this often. */
+const LAST_SYNC_SAVE_MS = 15 * 60_000;
 
 // One sync per account at a time: a second request (a click during an auto-sync) joins the running one.
 const running = new Map<string, Promise<SyncOutcome>>();
@@ -59,55 +62,68 @@ export function syncAccount(acct: StoredAccount, api: GmailApi = gmailFor(acct),
   return p;
 }
 
+type LabelSets = [unread: Set<string>, starred: Set<string>, inbox: Set<string>];
+
+/** A fixed-size stand-in for a message id, so the index stays small even for Outlook's long ids. */
+const shortId = (id: string): string => createHash('sha1').update(id).digest('base64url').slice(0, 8);
+
+/** What Gmail reports about the mail we store. The same value as last time means there is nothing to do. */
+function stateDigest(ids: string[], isStored: (id: string) => boolean, labels: LabelSets | null): string {
+  if (!labels) return '';
+  const stored = ids.filter(isStored);
+  const flags = ids.slice(0, LABEL_WINDOW).filter(isStored).map((id) => labels.map((set) => (set.has(id) ? 1 : 0)).join(''));
+  return createHash('sha1').update(RULES_VERSION + '|' + stored.join(',') + '|' + flags.join(',')).digest('base64url');
+}
+
+const storedIds = (mail: MailStore): string[] => Object.values(mail.threads).flatMap((t) => t.messages.map((m) => m.id));
+
+/**
+ * The stored mailbox is by far the largest thing this app moves, and most syncs change nothing in it. So a
+ * small index answers "is anything new?", and the mailbox is only read when the answer is yes.
+ */
 async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Promise<SyncOutcome> {
   // Wall clock, not `now` (tests pin `now` to the fixture's day).
   const deadline = Date.now() + cfg.syncBudgetMs;
   const left = () => deadline - Date.now();
-  const mail = await readMail(acct.id);
-  const startLabels = labelsById(mail);
+  const savedIndex = await readSyncIndex(acct.id);
+  // No index yet: build it from the mailbox, once.
+  const firstMail = savedIndex ? null : await readMail(acct.id);
+  const index: SyncIndex = savedIndex || { known: storedIds(firstMail!).map(shortId), skipped: firstMail!.skipped.map(shortId), digest: '' };
+  const wasKnown = new Set(index.known);
+  const isKnown = (id: string) => wasKnown.has(shortId(id));
+
   const listed = await api.listMessages(cfg.syncQuery, cfg.maxMessages);
   const ids = listed.map((m) => m.id);
-  const known = new Map<string, StoredThread>();
-  for (const t of Object.values(mail.threads)) for (const m of t.messages) known.set(m.id, t);
   // With the job filter off, mail it skipped earlier is fetched now.
-  const skipped = new Set(cfg.jobFilter ? mail.skipped : []);
-  let added = 0;
+  const skipped = new Set(cfg.jobFilter ? index.skipped : []);
 
   // Refresh read/starred/archived on known messages with three searches rather than
   // one request per message, which used up Gmail's per-minute quota on large mailboxes.
   // Only the newest LABEL_WINDOW: any of those that is unread (starred, in the inbox) is
   // also among the newest LABEL_WINDOW unread (starred, inbox) ones, so each search is complete for them.
-  const knownIds = ids.slice(0, LABEL_WINDOW).filter((id) => known.has(id));
-  if (knownIds.length) {
+  const readLabels = async (): Promise<LabelSets | null> => {
     try {
       const [unread, starred, inbox] = await Promise.all(
         Object.keys(LABEL_QUERIES).map(async (label) => new Set(await api.listMessageIds(cfg.syncQuery + ' ' + LABEL_QUERIES[label], LABEL_WINDOW))),
       );
-      for (const id of knownIds) {
-        const pm = known.get(id)?.messages.find((x) => x.id === id);
-        if (!pm) continue;
-        const labels = new Set(pm.labelIds.filter((l) => !(l in LABEL_QUERIES)));
-        if (unread.has(id)) labels.add('UNREAD');
-        if (starred.has(id)) labels.add('STARRED');
-        if (inbox.has(id)) labels.add('INBOX');
-        pm.labelIds = Array.from(labels);
-      }
+      return [unread, starred, inbox];
     } catch {
-      /* label refresh is best effort */
+      return null; // label refresh is best effort
     }
-  }
-
-  const removed = await dropDeleted(api, mail.threads, known, new Set(ids));
+  };
+  const quickLabels = ids.slice(0, LABEL_WINDOW).some(isKnown) ? await readLabels() : null;
+  const unchanged = !!index.digest && stateDigest(ids, isKnown, quickLabels) === index.digest;
 
   // Fetch each conversation with something new in full, so its earlier messages come
   // along even when they are older than the newest GMAIL_MAX_MESSAGES.
   // Newest first (the order Gmail lists them); a large backlog is worked through over several syncs.
-  const waiting = [...new Set(listed.filter((m) => !known.has(m.id) && !skipped.has(m.id)).map((m) => m.threadId))];
+  const waiting = [...new Set(listed.filter((m) => !isKnown(m.id) && !skipped.has(shortId(m.id))).map((m) => m.threadId))];
   // Measured from the request's deadline: listing and the checks above can take a while on a big mailbox.
   const fetchUntil = deadline - FETCH_RESERVE_MS;
   let fetched = 0;
   // A failed fetch (Gmail asking to slow down, mostly) ends this round's downloads; what came in is still saved.
   let stopped: unknown = null;
+  const incoming = new Map<string, ParsedMessage[]>();
   await pooled(waiting.slice(0, cfg.syncBatch), FETCH_WIDTH, async (threadId) => {
     if (stopped || Date.now() >= fetchUntil) return;
     let raw;
@@ -122,16 +138,60 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
     // Nothing left in it (moved to Trash between listing and fetching): nothing to store.
     if (!msgs.length) return;
     if (cfg.jobFilter && !msgs.some((pm) => pm.isMine || isJobRelated(pm))) {
-      msgs.forEach((pm) => skipped.add(pm.id));
+      msgs.forEach((pm) => skipped.add(shortId(pm.id)));
       return;
     }
+    incoming.set(threadId, msgs);
+  });
+
+  // Skipped ids that left the listing can't come back through it, so the index only keeps the listed ones.
+  const listedShort = new Set(ids.map(shortId));
+  const keptSkipped = Array.from(skipped).filter((id) => listedShort.has(id));
+  const finish = (outcome: Omit<SyncOutcome, 'pending' | 'throttled'>): SyncOutcome => {
+    if (stopped && !isRateLimitError(stopped)) throw stopped;
+    return { ...outcome, pending: waiting.length - fetched, throttled: !!stopped };
+  };
+
+  if (unchanged && !incoming.size) {
+    const next: SyncIndex = { ...index, skipped: keptSkipped };
+    if (JSON.stringify(next) !== JSON.stringify(savedIndex)) await writeSyncIndex(acct.id, next);
+    // "Synced 10 minutes ago" is close enough; this is a write to the shared accounts list.
+    if (!acct.lastSync || now.getTime() - Date.parse(acct.lastSync) >= LAST_SYNC_SAVE_MS) await saveSyncTime(acct, now);
+    return finish({ newMessages: 0, removed: 0, refining: 0 });
+  }
+
+  const mail = firstMail || (await readMail(acct.id));
+  const before = JSON.stringify(mail.threads);
+  const startLabels = labelsById(mail);
+  const known = new Map<string, StoredThread>();
+  for (const t of Object.values(mail.threads)) for (const m of t.messages) known.set(m.id, t);
+  // Read after the mailbox: a read or star made since the first search is in the mailbox as well as here.
+  const labels = await readLabels();
+  if (labels) {
+    const [unread, starred, inbox] = labels;
+    for (const id of ids.slice(0, LABEL_WINDOW).filter((x) => known.has(x))) {
+      const pm = known.get(id)?.messages.find((x) => x.id === id);
+      if (!pm) continue;
+      const next = new Set(pm.labelIds.filter((l) => !(l in LABEL_QUERIES)));
+      if (unread.has(id)) next.add('UNREAD');
+      if (starred.has(id)) next.add('STARRED');
+      if (inbox.has(id)) next.add('INBOX');
+      // Only a real change: Gmail's order alone must not count as new data to save.
+      if (labelKey(pm.labelIds) !== labelKey(Array.from(next))) pm.labelIds = Array.from(next);
+    }
+  }
+
+  const removed = await dropDeleted(api, mail.threads, known, new Set(ids));
+
+  let added = 0;
+  for (const [threadId, msgs] of incoming) {
     const t = (mail.threads[threadId] ||= { id: threadId, messages: [] });
     for (const pm of msgs) {
       if (t.messages.some((x) => x.id === pm.id)) continue;
       t.messages.push(pm);
       added++;
     }
-  });
+  }
 
   const toClassify: StoredThread[] = [];
   for (const t of Object.values(mail.threads)) {
@@ -162,15 +222,31 @@ async function syncAccountNow(acct: StoredAccount, api: GmailApi, now: Date): Pr
     else delete t.aiPending;
   });
 
-  mail.skipped = Array.from(skipped).slice(-5000);
-  mail.lastSync = now.toISOString();
-  await keepLabelChanges(acct.id, mail, startLabels);
-  await writeMail(acct.id, mail);
-  acct.lastSync = mail.lastSync;
-  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync } : a)));
+  const changed = JSON.stringify(mail.threads) !== before;
+  if (changed) {
+    mail.skipped = []; // kept in the index now
+    mail.lastSync = now.toISOString();
+    await keepLabelChanges(acct.id, mail, startLabels);
+    await writeMail(acct.id, mail);
+    // The browser reloads the mail when this changes.
+    acct.mailRev = Date.now().toString(36);
+  }
   const refining = Object.values(mail.threads).filter((t) => t.aiPending).length;
-  if (stopped && !isRateLimitError(stopped)) throw stopped;
-  return { newMessages: added, removed, pending: waiting.length - fetched, refining, throttled: !!stopped };
+  const nowStored = new Set(storedIds(mail));
+  const next: SyncIndex = {
+    known: Array.from(nowStored).map(shortId),
+    skipped: keptSkipped,
+    // Unfinished work means the next sync has to look in the mailbox again.
+    digest: stopped || refining ? '' : stateDigest(ids, (id) => nowStored.has(id), labels),
+  };
+  if (JSON.stringify(next) !== JSON.stringify(savedIndex)) await writeSyncIndex(acct.id, next);
+  await saveSyncTime(acct, now);
+  return finish({ newMessages: added, removed, refining });
+}
+
+async function saveSyncTime(acct: StoredAccount, now: Date): Promise<void> {
+  acct.lastSync = now.toISOString();
+  await updateAccounts((list) => list.map((a) => (a.id === acct.id ? { ...a, lastSync: acct.lastSync, mailRev: acct.mailRev } : a)));
 }
 
 /**

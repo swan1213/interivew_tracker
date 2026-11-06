@@ -263,6 +263,13 @@ function initialFields(): StateFields {
 
 let autoSyncing = false;
 
+/** The server's data version in the last load, when that was, and when mail ages were last brought up to date. */
+let loadedRev = '';
+let loadedAt = 0;
+let agedAt = 0;
+/** A sync with no changes reloads nothing, but a long-open tab still refreshes now and then. */
+const RELOAD_ANYWAY_MS = 12 * 60 * 60_000;
+
 /**
  * Read and star changes the mailbox hasn't confirmed yet. A snapshot that arrives meanwhile was built
  * before them, so they are laid over it; each is dropped once its request settles.
@@ -320,7 +327,18 @@ export const useStore = create<AppState>()((set, get) => {
     for (let round = 0; ; round++) {
       const r = await provider.sync(accountId);
       newMessages += r.newMessages;
-      if (!provider.isDemo) await get().hydrate();
+      if (!provider.isDemo) {
+        if (!r.rev || r.rev !== loadedRev || Date.now() - loadedAt > RELOAD_ANYWAY_MS) await get().hydrate();
+        else {
+          // Nothing changed: no download, just keep "x minutes ago" and the sync label current.
+          const mins = Math.floor((Date.now() - agedAt) / 60_000);
+          agedAt += mins * 60_000;
+          set((s) => ({
+            emails: mins ? s.emails.map((e) => ({ ...e, ago: e.ago + mins })) : s.emails,
+            accts: s.accts.map((a) => (!accountId || a.id === accountId ? { ...a, sync: 'Synced just now' } : a)),
+          }));
+        }
+      }
       const left = (r.pending || 0) + (r.refining || 0) + (r.throttled || 0);
       // One account's error (or a timeout) doesn't stop the others' backfill; give up only when a round makes no progress.
       const stuck = !!r.errors?.length && !r.newMessages && !r.throttled;
@@ -348,6 +366,8 @@ export const useStore = create<AppState>()((set, get) => {
       if (!get().accts.length) set({ loading: true });
       try {
         const [snap, me] = await Promise.all([provider.load(), authApi.me().catch(() => null)]);
+        loadedRev = snap.rev || '';
+        loadedAt = agedAt = Date.now();
         set((s) => ({
           ...withPending(mergeSnapshot(s, snap)), loading: false, compFrom: s.compFrom || snap.accts[0]?.id || '',
           // Pick up a role change made by an admin since this page loaded.

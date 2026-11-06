@@ -44,8 +44,9 @@ let calQueue: Promise<unknown> = Promise.resolve();
 function updateCalendar(fn: (c: CalendarStore) => void): Promise<void> {
   const run = calQueue.then(async () => {
     const c = await readCalendar();
+    const before = JSON.stringify(c);
     fn(c);
-    await writeCalendar(c);
+    if (JSON.stringify(c) !== before) await writeCalendar(c);
   });
   calQueue = run.catch(() => undefined);
   return run;

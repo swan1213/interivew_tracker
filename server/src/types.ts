@@ -13,6 +13,8 @@ export interface StoredAccount {
   /** Epoch ms when the access token expires. */
   expiresAt: number;
   lastSync: string | null;
+  /** Changes whenever a sync changes the stored mail. */
+  mailRev?: string;
   scopes: string[];
   /** Set when the provider refused the refresh token (expired or revoked); cleared by connecting again. */
   authError?: string;
@@ -98,9 +100,18 @@ export interface StoredThread {
   aiPending?: boolean;
 }
 
+/** What a sync needs to know to tell that nothing changed, without moving the whole mailbox. Ids are shortened. */
+export interface SyncIndex {
+  known: string[];
+  /** Fetched once and dropped (not job related), so they are not refetched. */
+  skipped: string[];
+  /** Gmail's state of the stored mail at the last finished sync; empty when the next sync must look in the mailbox. */
+  digest: string;
+}
+
 export interface MailStore {
   threads: Record<string, StoredThread>;
-  /** Message ids fetched once and dropped (not job related), so they are not refetched. */
+  /** From before the sync index; empty once an account has one. */
   skipped: string[];
   lastSync: string | null;
 }

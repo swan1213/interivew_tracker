@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { createHash } from 'node:crypto';
 import { cfg, tokenSecret } from './config';
 import { decrypt, encrypt } from './crypto';
-import { busyEvents, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
+import { busyEvents, type CalendarStore, dropCalendarAccount, NoCalendarError, pushEvent, readCalendar, removeEvent, syncCalendar } from './calendarSync';
 import { accountColors, accountInitial, ACCOUNT_COLORS, buildSnapshot, conversationGroups } from './derive';
 import { hasCalendar } from './google/calendar';
 import { buildRawReply, gmailFor, isRateLimitError } from './google/gmail';
@@ -13,12 +13,16 @@ import { messageHtml } from './mime';
 import { redactForGuest } from './redact';
 import { atLeast, clearSessionCookie, requireRole, setSessionCookie, userOf, type SignedInUser } from './session';
 import { addTeamMember, findMember, listTeam, normEmail, rememberName, removeTeamMember, setTeamRole, type TeamResult } from './team';
-import { mailFile, readAccounts, readMail, removeKey, updateAccounts, writeMail } from './store';
+import { mailFile, readAccounts, readMail, removeKey, syncIndexFile, updateAccounts, writeMail } from './store';
 import { applyLabels, syncAccount, updateStoredLabels } from './sync';
 import type { CalEvent } from '../../src/data/types';
 import type { StoredAccount } from './types';
 
 type Handler = (req: Request, res: Response) => Promise<void>;
+/** Changes when a browser's copy of the data is out of date, so it only reloads the mail then. */
+const dataRev = (accts: StoredAccount[], cal: Pick<CalendarStore, 'busy' | 'removed'>): string =>
+  createHash('sha1').update(JSON.stringify([accts.map((a) => [a.id, a.mailRev, a.authError]), cal.busy, cal.removed])).digest('base64url');
+
 const wrap = (fn: Handler) => (req: Request, res: Response, next: NextFunction) => fn(req, res).catch(next);
 
 function splitId(id: string): { acctId: string; threadId: string } {
@@ -239,7 +243,7 @@ export function createApi(): express.Express {
       snapshot.events.push(...busyEvents(cal, accts));
       snapshot.calRemoved = Object.keys(cal.removed);
       const user = res.locals.user as SignedInUser;
-      res.json({ snapshot: user.role === 'guest' ? redactForGuest(snapshot) : snapshot });
+      res.json({ snapshot: { ...(user.role === 'guest' ? redactForGuest(snapshot) : snapshot), rev: dataRev(accts, cal) } });
     }),
   );
 
@@ -270,7 +274,7 @@ export function createApi(): express.Express {
           hasCalendar(a) ? syncCalendar(a).catch((e: Error) => void errors.push(a.email + ' calendar: ' + e.message)) : Promise.resolve(),
         ]),
       );
-      res.json({ newMessages, pending, refining, throttled, errors });
+      res.json({ newMessages, pending, refining, throttled, errors, rev: dataRev(await readAccounts(), await readCalendar()) });
     }),
   );
 
@@ -442,6 +446,7 @@ export function createApi(): express.Express {
       }
       await updateAccounts((list) => list.filter((x) => x.id !== a.id));
       await removeKey(mailFile(a.id));
+      await removeKey(syncIndexFile(a.id));
       // Events already on the Google Calendar stay there; the app just stops tracking them.
       await dropCalendarAccount(a.id);
       res.json({ ok: true });

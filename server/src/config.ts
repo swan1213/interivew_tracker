@@ -29,7 +29,7 @@ export function loadEnvFile(file = resolve(ROOT, '.env')): void {
     }
   }
 }
-// Tests set their own environment; .env may point at real Google credentials or a production Redis.
+// Tests set their own environment; .env may point at real Google credentials or a production database.
 if (!process.env.VITEST) loadEnvFile();
 
 /** Runtime configuration, read lazily so tests and mock mode can set env first. */
@@ -108,6 +108,13 @@ export const cfg = {
       .split(',')
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean);
+  },
+  /** MongoDB connection string (Atlas shows it under Connect). Takes precedence over Redis and files. */
+  get mongoUri(): string {
+    return process.env.MONGODB_URI || '';
+  },
+  get mongoDb(): string {
+    return process.env.MONGODB_DB || 'interviewflow';
   },
   /** Upstash Redis REST endpoint; Vercel's Upstash integration sets the KV_* names. Empty means files in dataDir. */
   get redisUrl(): string {

@@ -222,6 +222,8 @@ export interface DataSnapshot {
   activity: ActivityItem[];
   /** Interviews the app had put on Google Calendar that were deleted there; the app takes them off too. */
   calRemoved?: string[];
+  /** See SyncResult.rev. */
+  rev?: string;
 }
 
 export interface OutgoingMessage {

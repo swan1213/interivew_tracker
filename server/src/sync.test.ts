@@ -213,21 +213,26 @@ describe('sync → classify → derive with the mock Gmail', () => {
     gm.messages.clear();
     mock.demoAsGmail(NOW).forEach((m) => gm.messages.set(m.id, m));
     await sync.syncAccount(own, gm, NOW);
+    await sync.syncAccount(own, gm, NOW);
     const unread = (id: string) => (async () => (await store.readMail(own.id)).threads[id].messages.some((m) => m.labelIds.includes('UNREAD')))();
     expect(await unread('t-e1')).toBe(true);
 
     // The sync has read Gmail's unread list; then you open the conversation and it is marked read.
     const list = gm.listMessageIds.bind(gm);
     let done = false;
+    let unreadSearches = 0;
     gm.listMessageIds = async (q: string, max: number) => {
       const ids = await list(q, max);
-      if (!done && q.includes('is:unread')) {
+      // The second search of the sync: the first only checks whether anything changed.
+      if (!done && q.includes('is:unread') && ++unreadSearches === 2) {
         done = true;
         await gm.modifyThread('t-e1', [], ['UNREAD']);
         await sync.updateStoredLabels(own.id, 't-e1', [], ['UNREAD']);
       }
       return ids;
     };
+    // Something else changed too, so this sync has to open the mailbox.
+    await gm.modifyThread('t-e3', ['STARRED'], []);
     await sync.syncAccount(own, gm, NOW);
     expect(done).toBe(true);
     expect(await unread('t-e1')).toBe(false);

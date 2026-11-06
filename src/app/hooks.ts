@@ -48,7 +48,8 @@ export function useAutoSync(): void {
   const background = useStore((s) => s.S.notif.browser);
   useEffect(() => {
     if (provider.isDemo || freq === 'manual') return;
-    const every = (Number(freq) || 5) * 60_000;
+    // At least 5 minutes, also for an older "every minute" setting: each sync uses the storage allowance.
+    const every = Math.max(5, Number(freq) || 5) * 60_000;
     let last = Date.now();
     const run = () => {
       if (document.visibilityState !== 'visible' && !background) return;
